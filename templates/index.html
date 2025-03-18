@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div>
+    <button name="generate">generate</button>
+    <button name="partager">partager</button>
+    <div id="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Passwords</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Password rows will be inserted here by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+<div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const button = document.querySelector('button[name="generate"]');
+    button.addEventListener('click', async () => {
+        const response = await fetch('/generate_password');
+        const data = await response.json();
+        
+        const tableContainer = document.querySelector('table tbody');
+        tableContainer.innerHTML = ''; // Clear any existing table
+
+        tableContainer.innerHTML = `
+                ${data.passwords.map(password => `
+                    <tr>
+                        <td>${password}</td>
+                    </tr>
+                `).join('')}
+        `;
+    });
+</script>
+{% endblock %}
+
+{% block styles %}
+<style>
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid black;
+        padding: 0.5rem;
+    }
+
+    tbody {
+        display: block;
+        max-height: 200px; /* Adjust height as needed */
+        overflow-y: auto;
+    }
+
+    thead, tbody tr {
+        display: table;
+        width: 100%;
+        table-layout: fixed;
+    }
+</style>
+{% endblock %}
