@@ -4,18 +4,20 @@ import bcrypt
 from models.password_generator import PasswordGenerator
 import multiprocessing
 from functools import wraps
-import uuid
-import base64
+import uuid, os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = '0arzghBRjO5eANgqXvyEd7/EZsYejnV5z3bQkiPQYw4='
+app.secret_key = os.getenv('SECRET_KEY')
 
 def get_db_connection():
     return pymysql.connect(
-        host='localhost',
-        user='root',
-        password='root',
-        database='GMP',
+        host=os.getenv('DB_HOST'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        database=os.getenv('DB_DATABASE'),
         cursorclass=pymysql.cursors.DictCursor
     )
 
@@ -25,7 +27,7 @@ def generate_password_wrapper(pg):
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'username' not in session:
+        if 'user_id' not in session:
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -33,7 +35,7 @@ def login_required(f):
 @app.route('/')
 @login_required
 def home():
-    return render_template('index.html', username=session['username'])
+    return render_template('index.html', username=session['user_id'])
 
 @app.route('/generate_password')
 def generate_password():
@@ -83,30 +85,29 @@ def login():
             print(e)
         finally:
             conn.close()
-
-        if user and bcrypt.checkpw(password.encode('utf-8'), user[3].encode('utf-8')):
-            session['username'] = user[1]
+        if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+            session['user_id'] = user['id_user']
+            print(user['id_user'])
             return redirect(url_for('home'))
-        return 'Invalid username or password'
+        return render_template('auth/login.html', message='Invalid username or password')
     return render_template('auth/login.html')
 
-
+# Route to get all passwords
 @app.route('/password_list')
 @login_required
 def password_list():
-    username = session['username']
+    user_id = session['user_id']
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """SELECT platform_name, password, created_at
-            FROM password WHERE user_id = (SELECT id_user FROM user WHERE username = %s)""",
-            (username,)
+            """SELECT id_password, platform_name, password, created_at
+            FROM password WHERE user_id = (SELECT id_user FROM user WHERE user_id = %s)""",
+            (user_id,)
         )
         passwords = cursor.fetchall()
-        # Decrypt passwords
-                # Decrypt passwords
-        key = "a" * 32  # Use the same key as in the add_password route
+        key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+        
         password_generator = PasswordGenerator(key)
         for password in passwords:
             try:
@@ -124,7 +125,7 @@ def password_list():
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)
+    session.pop('user_id', None)
     return redirect(url_for('login'))
 
 
@@ -135,21 +136,21 @@ def add_password():
         data = request.json
         platform_name = data.get('platform_name')
         password = data.get('password')
-        username = session['username']
+        user_id = session['user_id']
 
         # Convert the password to bytes
         password = password.encode('utf-8')
-        key = "a" * 32
+        key = os.getenv('ENCRYPTION_KEY')
         password_generator = PasswordGenerator(key)
-        encrypted = password_generator.encrypt(password).decode('utf-8')  # Decode to store as a string
+        encrypted = password_generator.encrypt(password).decode('utf-8')
 
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
                 """INSERT INTO password (platform_name, password, user_id)
-                VALUES (%s, %s, (SELECT id_user FROM user WHERE username = %s))""",
-                (platform_name, encrypted, username)
+                VALUES (%s, %s, (SELECT id_user FROM user WHERE id_user = %s))""",
+                (platform_name, encrypted, user_id)
             )
             conn.commit()
         except pymysql.Error as e:
@@ -159,12 +160,100 @@ def add_password():
         finally:
             conn.close()
 
-        return jsonify({"message": "Password added successfully"}), 201
+        return jsonify({"success": True, "message": "Password added successfully"}), 201
 
-@app.route('/share_password/<int:password_id>', methods=['POST'])
+# Route to edit a password
+@app.route('/edit', methods=['PUT'])
 @login_required
-def share_password(password_id):
-    share_token = str(uuid.uuid4())  # Génère un token unique
+def edit_password():
+    data = request.get_json()
+    idPassword = data.get('id')
+    newPassword = data.get('password')
+    user_id = session['user_id']
+
+    print(idPassword)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT * FROM user
+            WHERE id_user = %s
+            """, (user_id,)
+        )
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        
+        password = newPassword.encode('utf-8')
+        key = os.getenv('ENCRYPTION_KEY')
+        password_generator = PasswordGenerator(key)
+        encrypted = password_generator.encrypt(password).decode('utf-8')
+
+        cursor.execute(
+            """
+            UPDATE password
+            SET password = %s
+            WHERE user_id = %s AND id_password = %s
+            """, (encrypted, user_id, idPassword)
+        )
+        conn.commit()
+        return jsonify({"success": True, "message": "Password updated successfully"}), 200
+    except pymysql.Error as e:
+        print(f"An error occurred Mysql: {e}")
+        return jsonify({"success": False, "message": "Database error"}), 500
+    except Exception as e:
+        print(e)
+        return jsonify({"success": False, "message": "An unexpected error occurred"}), 500
+    finally:
+        conn.close()
+
+# Route to delete a password
+@app.route('/delete', methods=['DELETE'])
+@login_required
+def delete_password():
+    data = request.get_json()
+    idPassword = data.get('id')
+    user_id = session['user_id']
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM user
+            WHERE id_user = %s
+            """, (user_id,)
+        )
+        user = cursor.fetchone()
+        if not user:
+            print("User not found")
+            return jsonify({"success": False, "message": "User not found"}), 404
+
+        cursor.execute(
+            """
+            DELETE FROM password
+            WHERE user_id = %s AND id_password = %s
+            """, (user_id, idPassword)
+        )
+        conn.commit()
+        return jsonify({"success": True, "message": "Password deleted successfully"}), 200
+    except pymysql.Error as e:
+        print(f"An error occurred Mysql: {e}")
+        return jsonify({"success": False, "message": "Database error"}), 500
+    except Exception as e:
+        print(e)
+        return jsonify({"success": False, "message": "An unexpected error occurred"}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/share_password', methods=['POST'])
+@login_required
+def share_password():
+    data = request.get_json()
+    password_id = data.get('id')
+    share_token = str(uuid.uuid4())
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -174,7 +263,7 @@ def share_password(password_id):
     conn.commit()
     conn.close()
     share_link = f"{request.host_url}shared/{share_token}"
-    return jsonify({"share_link": share_link})
+    return jsonify({"success": True, "share_link": share_link})
 
 
 @app.route('/shared/<share_token>', methods=['GET'])
@@ -182,31 +271,42 @@ def get_shared_password(share_token):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        # Récupérer le mot de passe partagé
         cursor.execute(
-            "SELECT p.password FROM password p "
-            "JOIN shared_password sp ON p.id_password = sp.password_id "
-            "WHERE sp.share_token = %s",
-            (share_token,)
+            """
+            SELECT p.platform_name, p.password, sp.id_shared_password
+            FROM shared_password sp
+            JOIN password p ON sp.password_id = p.id_password
+            WHERE sp.share_token = %s
+            """, (share_token,)
         )
         shared_password = cursor.fetchone()
         if not shared_password:
-            return "Invalid or expired link", 404
-        # Delete the shared password after it has been accessed
+            return render_template('show_password.html', error="Lien invalide ou expiré.")
+        
+        # Déchiffrer le mot de passe
+        key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+        password_generator = PasswordGenerator(key)
+        try:
+            decrypted_password = password_generator.decrypt(shared_password['password']).decode('utf-8')
+        except Exception as e:
+            decrypted_password = f"Erreur lors du déchiffrement : {str(e)}"
+        
+        # Supprimer le lien de partage après utilisation
         cursor.execute(
-            "DELETE FROM shared_password WHERE share_token = %s",
-            (share_token,)
+            """
+            DELETE FROM shared_password
+            WHERE id_shared_password = %s
+            """, (shared_password['id_shared_password'],)
         )
         conn.commit()
-    except pymysql.Error as e:
-        print(f"An error occurred Mysql: {e}")
+
+        return render_template('show_password.html', platform=shared_password['platform_name'], password=decrypted_password)
     except Exception as e:
         print(e)
+        return render_template('show_password.html', error="Une erreur est survenue.")
     finally:
         conn.close()
-
-    if shared_password:
-        return jsonify({"password": shared_password[0]})
-    return "Invalid or expired link", 404
 
 
 if __name__ == '__main__':

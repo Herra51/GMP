@@ -1,4 +1,3 @@
--- SQLBook: Code
 CREATE TABLE user (
     id_user INT auto_increment,
     username VARCHAR(50) NOT NULL,
@@ -35,7 +34,7 @@ CREATE TABLE secret_message (
     PRIMARY KEY (id_secret_message)
 );
 CREATE TABLE histo_password_modification(
-    id_histo_password_modification INT  auto_increment,
+    id_histo_password_modification INT auto_increment,
     user_id INT NOT NULL,
     password_id INT NOT NULL,
     modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

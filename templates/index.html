@@ -13,11 +13,10 @@
                 </tr>
             </thead>
             <tbody>
-                <!-- Password rows will be inserted here by JavaScript -->
             </tbody>
         </table>
     </div>
-<div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -26,9 +25,9 @@
     button.addEventListener('click', async () => {
         const response = await fetch('/generate_password');
         const data = await response.json();
-        
+
         const tableContainer = document.querySelector('table tbody');
-        tableContainer.innerHTML = ''; // Clear any existing table
+        tableContainer.innerHTML = '';
 
         tableContainer.innerHTML = `
                 ${data.passwords.map(password => `
@@ -48,18 +47,21 @@
         border-collapse: collapse;
     }
 
-    th, td {
+    th,
+    td {
         border: 1px solid black;
         padding: 0.5rem;
     }
 
     tbody {
         display: block;
-        max-height: 200px; /* Adjust height as needed */
+        max-height: 200px;
+        /* Adjust height as needed */
         overflow-y: auto;
     }
 
-    thead, tbody tr {
+    thead,
+    tbody tr {
         display: table;
         width: 100%;
         table-layout: fixed;

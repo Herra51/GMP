@@ -11,17 +11,40 @@
     <header>
         <ul>
             <li><a href="/">Accueil</a></li>
-            <li><a href="/password_list">Ma base de mot de passe</a></li>
+            <li><a href="/password_list">Mon coffre fort</a></li>
             <li><a href="/logout">Déconnexion</a></li>
         </ul>
     </header>
-    <div>
-        <h1>Bonjour</h1>
-        <p>{{ username }}</p>
-    </div>
     {% block content %}{% endblock %}
     {% block scripts %}{% endblock %}
     {% block styles %}{% endblock %}
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        header {
+            background-color: #333;
+            color: white;
+            padding: .25rem;
+        }
+
+        header ul {
+            display: flex;
+            justify-content: space-around;
+            list-style: none;
+            padding: 0;
+        }
+
+        header ul li a {
+            color: white;
+            text-decoration: none;
+        }
+
+        header ul li a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </body>
 
 </html>
