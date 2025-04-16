@@ -9,7 +9,7 @@ CREATE TABLE user (
 CREATE TABLE password (
     id_password INT  auto_increment,
     user_id INT NOT NULL,
-    category_id INT NOT NULL DEFAULT 1,
+    category_id INT NOT NULL DEFAULT 0,
     platform_name VARCHAR(50) NOT NULL,
     password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -48,5 +48,5 @@ CREATE TABLE shared_password (
     share_token VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id_shared_password),
-    FOREIGN KEY (password_id) REFERENCES password(id_password)
+    FOREIGN KEY (password_id) REFERENCES password(id_password) ON DELETE CASCADE
 );

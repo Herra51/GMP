@@ -6,7 +6,7 @@ import multiprocessing
 from functools import wraps
 import uuid, os
 from dotenv import load_dotenv
-
+from libs.categories_user import get_categories
 load_dotenv()
 
 app = Flask(__name__)
@@ -39,7 +39,8 @@ def home():
 
 @app.route('/generate_password')
 def generate_password():
-    password_generator = PasswordGenerator()
+    key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+    password_generator = PasswordGenerator(key)
     multiprocessing.freeze_support()
     with multiprocessing.Pool() as pool:
         encrypted_passwords = pool.map(generate_password_wrapper, [password_generator] * 100)
@@ -101,13 +102,15 @@ def password_list():
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """SELECT id_password, platform_name, password, created_at
-            FROM password WHERE user_id = (SELECT id_user FROM user WHERE user_id = %s)""",
+            """SELECT password.id_password, password.platform_name, password.password, password.created_at,IFNULL(category_name,'') as category_name
+            FROM password 
+            LEFT JOIN password_category ON password.category_id = password_category.id_password_category
+            WHERE password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
+            ORDER BY category_name""",
             (user_id,)
         )
         passwords = cursor.fetchall()
         key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
-        
         password_generator = PasswordGenerator(key)
         for password in passwords:
             try:
@@ -115,13 +118,16 @@ def password_list():
                 password['password'] = password_generator.decrypt(password['password']).decode('utf-8')
             except Exception as e:
                 password['password'] = f"Error decrypting password: {str(e)}"
+        categories = get_categories()
+        print("passwords", passwords)
+        print("categories", categories)
+        return render_template('password_list.html', passwords=passwords, categories=categories)
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
     except Exception as e:
         print(e)
     finally:
         conn.close()
-    return render_template('password_list.html', passwords=passwords)
 
 @app.route('/logout')
 def logout():
@@ -137,7 +143,9 @@ def add_password():
         platform_name = data.get('platform_name')
         password = data.get('password')
         user_id = session['user_id']
-
+        category_id = data.get('category_id')
+        if not category_id:
+            category_id = 0
         # Convert the password to bytes
         password = password.encode('utf-8')
         key = os.getenv('ENCRYPTION_KEY')
@@ -148,9 +156,9 @@ def add_password():
         cursor = conn.cursor()
         try:
             cursor.execute(
-                """INSERT INTO password (platform_name, password, user_id)
-                VALUES (%s, %s, (SELECT id_user FROM user WHERE id_user = %s))""",
-                (platform_name, encrypted, user_id)
+                """INSERT INTO password (platform_name, password, user_id, category_id)
+                VALUES (%s, %s, (SELECT id_user FROM user WHERE id_user = %s), %s)""",
+                (platform_name, encrypted, user_id, category_id)
             )
             conn.commit()
         except pymysql.Error as e:
@@ -171,7 +179,6 @@ def edit_password():
     newPassword = data.get('password')
     user_id = session['user_id']
 
-    print(idPassword)
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -309,5 +316,55 @@ def get_shared_password(share_token):
         conn.close()
 
 
+@app.route('/filter_passwords', methods=['POST'])
+@login_required
+def filter_passwords():
+    data = request.get_json()  # Retrieve JSON data from the POST request
+    category_id = data.get('category')  # Extract 'category' from the JSON body
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    print("category_id", category_id)
+    print("user_id", user_id)
+    try:
+        if not category_id:
+            cursor.execute(
+                """
+                SELECT password.id_password, password.platform_name, password.password, password.created_at,IFNULL(category_name,'') as category_name
+                FROM password 
+                LEFT JOIN password_category ON password.category_id = password_category.id_password_category
+                WHERE password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
+                ORDER BY category_name
+                """, (user_id,)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT password.id_password, password.platform_name, password.password, password.created_at,IFNULL(category_name,'') as category_name
+                FROM password 
+                LEFT JOIN password_category ON password.category_id = password_category.id_password_category
+                WHERE password.category_id = %s AND password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
+                """, (category_id, user_id)
+            )
+        passwords = cursor.fetchall()
+        key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+        password_generator = PasswordGenerator(key)
+        for password in passwords:
+            try:
+                # Directly decrypt the base64-encoded password
+                password['password'] = password_generator.decrypt(password['password']).decode('utf-8')
+            except Exception as e:
+                password['password'] = f"Error decrypting password: {str(e)}"
+        return jsonify({"passwords": passwords})  # Return JSON response
+    except pymysql.Error as e:
+        print(f"An error occurred Mysql: {e}")
+        return jsonify({"error": "Database error"}), 500
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "An unexpected error occurred"}), 500
+    finally:
+        conn.close()
+        
 if __name__ == '__main__':
     app.run(debug=True)
