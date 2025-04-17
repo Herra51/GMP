@@ -22,9 +22,15 @@
 <script>
     const button = document.querySelector('button[name="generate"]');
     button.addEventListener('click', async () => {
-        const response = await fetch('/generate_password');
+        const response = await fetch('/generate_kdbx', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log(response);
         const data = await response.json();
-
+        console.log(data);
         const tableContainer = document.querySelector('table tbody');
         tableContainer.innerHTML = '';
 

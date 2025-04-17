@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for, s
 import pymysql
 import bcrypt
 from models.password_generator import PasswordGenerator
+from models.generate_kdbx_file import generate_kdbx
 import multiprocessing
 from functools import wraps
 import uuid, os
@@ -86,11 +87,16 @@ def login():
             print(e)
         finally:
             conn.close()
-        if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-            session['user_id'] = user['id_user']
-            print(user['id_user'])
-            return redirect(url_for('home'))
-        return render_template('auth/login.html', message='Invalid username or password')
+        if user:
+            stored_password = user.get('password')
+            if stored_password and bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
+                session['user_id'] = user['id_user']
+                print(user['id_user'])
+                return redirect(url_for('home'))
+            else:
+                return render_template('auth/login.html', message='Invalid username or password')
+        else:
+            return render_template('auth/login.html', message='Invalid username or password')
     return render_template('auth/login.html')
 
 # Route to get all passwords
@@ -102,7 +108,7 @@ def password_list():
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """SELECT password.id_password, password.platform_name, password.password, password.created_at,IFNULL(category_name,'') as category_name
+            """SELECT password.id_password, password.platform_name, password.password, password.login, password.url, password.created_at, IFNULL(category_name,'') as category_name
             FROM password 
             LEFT JOIN password_category ON password.category_id = password_category.id_password_category
             WHERE password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
@@ -119,8 +125,6 @@ def password_list():
             except Exception as e:
                 password['password'] = f"Error decrypting password: {str(e)}"
         categories = get_categories()
-        print("passwords", passwords)
-        print("categories", categories)
         return render_template('password_list.html', passwords=passwords, categories=categories)
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
@@ -142,6 +146,8 @@ def add_password():
         data = request.json
         platform_name = data.get('platform_name')
         password = data.get('password')
+        login = data.get('login')  # Nouveau champ
+        url = data.get('url')  # Nouveau champ
         user_id = session['user_id']
         category_id = data.get('category_id')
         if not category_id:
@@ -156,9 +162,9 @@ def add_password():
         cursor = conn.cursor()
         try:
             cursor.execute(
-                """INSERT INTO password (platform_name, password, user_id, category_id)
-                VALUES (%s, %s, (SELECT id_user FROM user WHERE id_user = %s), %s)""",
-                (platform_name, encrypted, user_id, category_id)
+                """INSERT INTO password (platform_name, password, login, url, user_id, category_id)
+                VALUES (%s, %s, %s, %s, (SELECT id_user FROM user WHERE id_user = %s), %s)""",
+                (platform_name, encrypted, login, url, user_id, category_id)
             )
             conn.commit()
         except pymysql.Error as e:
@@ -177,6 +183,8 @@ def edit_password():
     data = request.get_json()
     idPassword = data.get('id')
     newPassword = data.get('password')
+    newLogin = data.get('login')  # Nouveau champ
+    newUrl = data.get('url')  # Nouveau champ
     user_id = session['user_id']
 
     conn = get_db_connection()
@@ -200,9 +208,9 @@ def edit_password():
         cursor.execute(
             """
             UPDATE password
-            SET password = %s
+            SET password = %s, login = %s, url = %s
             WHERE user_id = %s AND id_password = %s
-            """, (encrypted, user_id, idPassword)
+            """, (encrypted, newLogin, newUrl, user_id, idPassword)
         )
         conn.commit()
         return jsonify({"success": True, "message": "Password updated successfully"}), 200
@@ -325,13 +333,11 @@ def filter_passwords():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    print("category_id", category_id)
-    print("user_id", user_id)
     try:
         if not category_id:
             cursor.execute(
                 """
-                SELECT password.id_password, password.platform_name, password.password, password.created_at,IFNULL(category_name,'') as category_name
+                SELECT password.id_password, password.platform_name, password.password, password.login, password.url, password.created_at, IFNULL(category_name,'Aucune') as category_name
                 FROM password 
                 LEFT JOIN password_category ON password.category_id = password_category.id_password_category
                 WHERE password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
@@ -341,7 +347,7 @@ def filter_passwords():
         else:
             cursor.execute(
                 """
-                SELECT password.id_password, password.platform_name, password.password, password.created_at,IFNULL(category_name,'') as category_name
+                SELECT password.id_password, password.platform_name, password.password, password.login, password.url, password.created_at, IFNULL(category_name,'') as category_name
                 FROM password 
                 LEFT JOIN password_category ON password.category_id = password_category.id_password_category
                 WHERE password.category_id = %s AND password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
@@ -365,6 +371,13 @@ def filter_passwords():
         return jsonify({"error": "An unexpected error occurred"}), 500
     finally:
         conn.close()
-        
+
+@app.route('/generate_kdbx', methods=['POST'])
+@login_required
+def generate_kdbx_route():
+    user_id = session['user_id']
+    return generate_kdbx(user_id,get_db_connection())
+
+
 if __name__ == '__main__':
     app.run(debug=True)
