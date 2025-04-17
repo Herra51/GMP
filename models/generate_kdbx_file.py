@@ -1,7 +1,7 @@
 from collections import defaultdict
 from flask import request, jsonify
 from pykeepass import create_database, PyKeePass
-def generate_kdbx(user_id,bdd_connection):
+def generate_kdbx(user_id,bdd_connection,master_password):
     try:
         # Récupérer l'ID utilisateur depuis les données POST
         if not user_id:
@@ -41,7 +41,6 @@ def generate_kdbx(user_id,bdd_connection):
             })
         # Chemin du fichier .kdbx à créer (inclure l'ID utilisateur dans le nom)
         kdbx_file = f'user_{user_id}.kdbx'
-        master_password = '1234'
 
         # Créer un nouveau fichier KeePass
         create_database(kdbx_file, password=master_password)

@@ -3,7 +3,7 @@
 
 {% block content %}
 <div>
-    <button name="generate">generate</button>
+    <button name="Exporter">Exporter</button>
     <div id="table-container">
         <table>
             <thead>
@@ -20,13 +20,15 @@
 
 {% block scripts %}
 <script>
-    const button = document.querySelector('button[name="generate"]');
+    const button = document.querySelector('button[name="Exporter"]');
     button.addEventListener('click', async () => {
+        const Password = prompt('Mot de passe du fichier :');
         const response = await fetch('/generate_kdbx', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({ password: Password })
         });
         console.log(response);
         const data = await response.json();

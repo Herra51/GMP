@@ -1,0 +1,43 @@
+<!-- filepath: c:\Users\canti\Documents\Python\GMP\templates\parametres.html -->
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <h1>Paramètres</h1>
+    
+    <!-- Section pour gérer le profil -->
+    <section id="profil">
+        <h2>Gérer le Profil</h2>
+        
+    </section>
+
+    <!-- Section pour gérer les catégories -->
+    <section id="categories">
+        <h2>Gérer les Catégories</h2>
+        <form method="POST" action="/add_category">
+            <label for="category_name">Nom de la catégorie:</label>
+            <input type="text" id="category_name" name="category_name" required>
+            <button type="submit">Ajouter</button>
+        </form>
+        <h3>Catégories existantes</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Nom de la Catégorie</th>
+                    <th>Date de création</th>
+                    <th>Nombre de Mots de Passe</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in categories %}
+                <tr>
+                    <td>{{ category.category_name }}</td>
+                    <td>{{ category.created_at }}</td>
+                    <td>{{ category.password_count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}

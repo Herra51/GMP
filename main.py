@@ -108,7 +108,7 @@ def password_list():
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """SELECT password.id_password, password.platform_name, password.password, password.login, password.url, password.created_at, IFNULL(category_name,'') as category_name
+            """SELECT password.id_password, password.platform_name, password.password, password.login, password.url, password.created_at, IFNULL(category_name,'Aucune') as category_name
             FROM password 
             LEFT JOIN password_category ON password.category_id = password_category.id_password_category
             WHERE password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
@@ -133,11 +133,59 @@ def password_list():
     finally:
         conn.close()
 
+@app.route('/parametres')
+@login_required
+def settings():
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Récupérer les catégories associées à l'utilisateur
+        cursor.execute(
+            """
+            SELECT category_name, created_at, (SELECT COUNT(*) FROM password WHERE category_id = id_password_category) as password_count
+            FROM password_category
+            WHERE user_id = %s
+            """, (user_id,)
+        )
+        categories = cursor.fetchall()
+        return render_template('parametres.html', categories=categories)
+    except pymysql.Error as e:
+        print(f"An error occurred Mysql: {e}")
+        return render_template('parametres.html', error="Erreur lors de la récupération des catégories.")
+    except Exception as e:
+        print(e)
+        return render_template('parametres.html', error="Une erreur inattendue est survenue.")
+    finally:
+        conn.close()
+
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
 
+@app.route('/add_category', methods=['POST'])
+@login_required
+def add_category():
+    if request.method == 'POST':
+        category_name = request.form['category_name']
+        user_id = session['user_id']
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO password_category (category_name, user_id) VALUES (%s, %s)",
+                (category_name, user_id)
+            )
+            conn.commit()
+        except pymysql.Error as e:
+            print(f"An error occurred Mysql: {e}")
+        except Exception as e:
+            print(e)
+        finally:
+            conn.close()
+
+        return redirect(url_for('settings'))
 
 @app.route('/add_password', methods=['POST'])
 @login_required
@@ -376,7 +424,15 @@ def filter_passwords():
 @login_required
 def generate_kdbx_route():
     user_id = session['user_id']
-    return generate_kdbx(user_id,get_db_connection())
+    data = request.get_json()  # Récupérer les données du corps de la requête
+    password = data.get('password')  # Extraire le mot de passe du JSON
+    
+    if not password:
+        return jsonify({"error": "Password is required"}), 400
+    
+    
+    
+    return generate_kdbx(user_id,get_db_connection(), password)
 
 
 if __name__ == '__main__':
