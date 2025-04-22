@@ -3,6 +3,5 @@ pycryptodome
 pymysql
 bcrypt
 requests
-multiprocessing
 python-dotenv
 pykeepass
