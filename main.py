@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, redirect, url_for, session
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session, send_file
 import pymysql
 import bcrypt
 from models.password_generator import PasswordGenerator
@@ -10,6 +10,10 @@ from dotenv import load_dotenv
 from libs.categories_user import get_categories
 import hashlib
 import secrets
+import pyotp
+import qrcode
+import io
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -100,6 +104,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+        otp_code = request.form.get('otp_code')  # Peut être None si non envoyé
+
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -107,13 +113,26 @@ def login():
             user = cursor.fetchone()
         except pymysql.Error as e:
             print(f"An error occurred Mysql: {e}")
+            return render_template('auth/login.html', message='Erreur MySQL')
         except Exception as e:
             print(e)
+            return render_template('auth/login.html', message='Erreur inattendue')
         finally:
             conn.close()
+
         if user:
             stored_password = user.get('password')
             if stored_password and bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
+                otp_secret = user.get('otp_secret')
+                # Si l'utilisateur a activé la 2FA
+                if otp_secret:
+                    # Si le code OTP n'est pas encore soumis, affiche le formulaire OTP
+                    if not otp_code:
+                        return render_template('auth/otp.html', username=username, password=password)
+                    # Vérifie le code OTP
+                    if not pyotp.TOTP(otp_secret).verify(otp_code):
+                        return render_template('auth/otp.html', username=username, password=password, message='Code 2FA invalide')
+                # Authentification réussie
                 session['user_id'] = user['id_user']
                 # Dérive la clé à partir du mot de passe de connexion et du sel stocké
                 salt = user['encryption_salt']
@@ -232,6 +251,7 @@ def settings():
     user_id = session['user_id']
     message = request.args.get('message')
     share_message = None
+    show_disable_2fa_form = request.args.get('show_disable_2fa_form', False)
     conn = get_db_connection()
     cursor = conn.cursor()
     if request.method == 'POST':
@@ -255,10 +275,14 @@ def settings():
         categories = cursor.fetchall()
         cursor.execute("SELECT default_share_views, default_share_expiry_minutes FROM user WHERE id_user=%s", (user_id,))
         share_settings = cursor.fetchone() or {'default_share_views': 1, 'default_share_expiry_minutes': 120}
-        return render_template('parametres.html', categories=categories, message=message, share_settings={
-            'views_left': share_settings['default_share_views'],
-            'expiry_minutes': share_settings['default_share_expiry_minutes']
-        }, share_message=share_message)
+        
+        cursor.execute("SELECT otp_secret FROM user WHERE id_user = %s", (user_id,))
+        user = cursor.fetchone()
+        return render_template('parametres.html', categories=categories, message=message, user=user, show_disable_2fa_form=show_disable_2fa_form,
+            share_settings={
+                'views_left': share_settings['default_share_views'],
+                'expiry_minutes': share_settings['default_share_expiry_minutes']
+            }, share_message=share_message)
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
         return render_template('parametres.html', error="Erreur lors de la récupération des catégories.")
@@ -645,6 +669,120 @@ def delete_category():
     finally:
         conn.close()
 
+import base64
+
+@app.route('/enable_2fa', methods=['GET', 'POST'])
+@login_required
+def enable_2fa():
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    qrcode_data = None
+    otp_secret = None
+    message = None
+
+    if request.method == 'POST':
+        # Si l'utilisateur n'a pas encore de secret temporaire, on en génère un
+        if 'otp_secret_tmp' not in session:
+            otp_secret = pyotp.random_base32()
+            session['otp_secret_tmp'] = otp_secret
+        else:
+            otp_secret = session['otp_secret_tmp']
+
+        # Génère le QR code
+        uri = pyotp.totp.TOTP(otp_secret).provisioning_uri(name=f"user{user_id}", issuer_name="GMP")
+        img = qrcode.make(uri)
+        buf = io.BytesIO()
+        img.save(buf)
+        buf.seek(0)
+        qrcode_data = base64.b64encode(buf.read()).decode('utf-8')
+
+        # Si le code a été soumis
+        otp_code = request.form.get('otp_code')
+        if otp_code:
+            totp = pyotp.TOTP(otp_secret)
+            if totp.verify(otp_code):
+                # Enregistre le secret en base
+                cursor.execute("UPDATE user SET otp_secret = %s WHERE id_user = %s", (otp_secret, user_id))
+                conn.commit()
+                session.pop('otp_secret_tmp', None)
+                message = "Double authentification activée avec succès."
+                # Recharge la page pour afficher l'état activé
+                return redirect(url_for('settings', message=message))
+            else:
+                message = "Code 2FA invalide. Réessayez."
+    else:
+        session.pop('otp_secret_tmp', None)
+
+    # Récupère les catégories et l'état 2FA pour affichage
+    cursor.execute(
+        """
+        SELECT category_name, created_at, (SELECT COUNT(*) FROM password WHERE category_id = id_password_category) as password_count
+        FROM password_category
+        WHERE user_id = %s
+        """, (user_id,)
+    )
+    categories = cursor.fetchall()
+    cursor.execute("SELECT otp_secret FROM user WHERE id_user = %s", (user_id,))
+    user = cursor.fetchone()
+    conn.close()
+
+    return render_template(
+        'parametres.html',
+        categories=categories,
+        user=user,
+        qrcode_data=qrcode_data,
+        otp_secret=otp_secret,
+        message=message
+    )
+
+@app.route('/disable_2fa', methods=['POST', 'GET'])
+@login_required
+def disable_2fa():
+    user_id = session['user_id']
+    message = None
+
+    if request.method == 'POST':
+        otp_code = request.form.get('otp_code')
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT otp_secret FROM user WHERE id_user = %s", (user_id,))
+        user = cursor.fetchone()
+        if user and user['otp_secret']:
+            totp = pyotp.TOTP(user['otp_secret'])
+            if totp.verify(otp_code):
+                cursor.execute("UPDATE user SET otp_secret = NULL WHERE id_user = %s", (user_id,))
+                conn.commit()
+                conn.close()
+                message = "Double authentification désactivée avec succès."
+                return redirect(url_for('settings', message=message))
+            else:
+                message = "Code 2FA incorrect."
+        else:
+            message = "Aucune double authentification activée."
+        conn.close()
+        # Affiche à nouveau le formulaire avec le message d'erreur
+        return render_template(
+            'parametres.html',
+            categories=get_categories(),
+            user=user,
+            show_disable_2fa_form=True,
+            message=message
+        )
+    else:
+        # Affiche le formulaire pour entrer le code 2FA
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT otp_secret FROM user WHERE id_user = %s", (user_id,))
+        user = cursor.fetchone()
+        conn.close()
+        return render_template(
+            'parametres.html',
+            categories=get_categories(),
+            user=user,
+            show_disable_2fa_form=True,
+            message=message
+        )
 
 if __name__ == '__main__':
     app.run(debug=True)

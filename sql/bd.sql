@@ -7,6 +7,7 @@ CREATE TABLE user (
     encryption_salt VARBINARY(32) NOT NULL,
     default_share_views INT DEFAULT 1,
     default_share_expiry_minutes INT DEFAULT 2,
+    otp_secret VARBINARY(32),
     PRIMARY KEY (id_user),
     UNIQUE (username),
     UNIQUE (email)

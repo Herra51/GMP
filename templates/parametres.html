@@ -18,12 +18,51 @@
                 <input type="password" class="form-control" id="new_password" name="new_password" required>
             </div>
             <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
-            {% if message %}
-            <div class="mt-2 alert {% if " incorrect" in message|lower %}alert-danger{% else %}alert-info{% endif %}">{{
-                message }}</div>
+            {% if password_message %}
+            <div class="mt-2 alert {% if "incorrect" in password_message|lower %}alert-danger{% else %}alert-info{% endif %}">{{ password_message }}</div>
             {% endif %}
         </form>
     </section>
+
+    <!-- Double authentification -->
+    {% if not user.otp_secret %}
+    <form action="{{ url_for('enable_2fa') }}" method="post">
+        {% if qrcode_data %}
+        <div class="mb-3">
+            <p>Scannez ce QR code avec Google Authenticator :</p>
+            <img src="data:image/png;base64,{{ qrcode_data }}" alt="QR Code 2FA" />
+            <p><strong>Clé secrète :</strong> {{ otp_secret }}</p>
+        </div>
+        <div class="mb-3">
+            <label for="otp_code" class="form-label">Entrez le code à 6 chiffres de votre application :</label>
+            <input type="text" class="form-control" id="otp_code" name="otp_code" maxlength="6" required pattern="\d{6}">
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary mb-3">
+            {% if qrcode_data %}Valider le code 2FA{% else %}Activer la double authentification (2FA){% endif %}
+        </button>
+        {% if twofa_message %}
+        <div class="alert alert-danger mt-2">{{ twofa_message }}</div>
+        {% endif %}
+    </form>
+    {% else %}
+    <p>Double authentification activée ✅</p>
+    {% if show_disable_2fa_form %}
+    <form action="{{ url_for('disable_2fa') }}" method="post" class="mb-3">
+        <label for="otp_code" class="form-label">Entrez le code 2FA pour désactiver :</label>
+        <input type="text" class="form-control" id="otp_code" name="otp_code" maxlength="6" required pattern="\d{6}">
+        <div class="form-text">Vous devez saisir le code à 6 chiffres généré par votre application d'authentification.</div>
+        <button type="submit" class="btn btn-danger btn-sm mt-2">Confirmer la désactivation</button>
+        {% if twofa_message %}
+        <div class="alert alert-danger mt-2">{{ twofa_message }}</div>
+        {% endif %}
+    </form>
+    {% else %}
+    <form action="{{ url_for('disable_2fa') }}" method="get" style="display:inline;">
+        <button type="submit" class="btn btn-danger btn-sm">Désactiver la double authentification</button>
+    </form>
+    {% endif %}
+    {% endif %}
 
     <!-- Section pour gérer les catégories -->
     <section id="categories">
