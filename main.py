@@ -226,15 +226,25 @@ def change_password():
         conn.close()
     return redirect(url_for('settings', message=message))
 
-@app.route('/parametres')
+@app.route('/parametres', methods=['GET', 'POST'])
 @login_required
 def settings():
     user_id = session['user_id']
     message = request.args.get('message')
+    share_message = None
     conn = get_db_connection()
     cursor = conn.cursor()
+    if request.method == 'POST':
+        # Mise à jour des paramètres de partage
+        default_views = int(request.form.get('default_views', 1))
+        default_expiry = int(request.form.get('default_expiry', 120))
+        cursor.execute(
+            "UPDATE user SET default_share_views=%s, default_share_expiry_minutes=%s WHERE id_user=%s",
+            (default_views, default_expiry, user_id)
+        )
+        conn.commit()
+        share_message = "Paramètres de partage mis à jour."
     try:
-        # Récupérer les catégories associées à l'utilisateur
         cursor.execute(
             """
             SELECT category_name, created_at, (SELECT COUNT(*) FROM password WHERE category_id = id_password_category) as password_count
@@ -243,7 +253,12 @@ def settings():
             """, (user_id,)
         )
         categories = cursor.fetchall()
-        return render_template('parametres.html', categories=categories, message=message)
+        cursor.execute("SELECT default_share_views, default_share_expiry_minutes FROM user WHERE id_user=%s", (user_id,))
+        share_settings = cursor.fetchone() or {'default_share_views': 1, 'default_share_expiry_minutes': 120}
+        return render_template('parametres.html', categories=categories, message=message, share_settings={
+            'views_left': share_settings['default_share_views'],
+            'expiry_minutes': share_settings['default_share_expiry_minutes']
+        }, share_message=share_message)
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
         return render_template('parametres.html', error="Erreur lors de la récupération des catégories.")
@@ -439,12 +454,22 @@ def delete_password():
 def share_password():
     data = request.get_json()
     password_id = data.get('id')
-    share_token = str(uuid.uuid4())
+    user_id = session['user_id']
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Récupère les paramètres de partage de l'utilisateur
+    cursor.execute("SELECT default_share_views, default_share_expiry_minutes FROM user WHERE id_user=%s", (user_id,))
+    user_settings = cursor.fetchone() or {'default_share_views': 1, 'default_share_expiry_minutes': 120}
+    views_left = user_settings['default_share_views']
+    expiry_minutes = user_settings['default_share_expiry_minutes']
+    expires_at = None
+    if expiry_minutes and expiry_minutes > 0:
+        cursor.execute("SELECT NOW() + INTERVAL %s MINUTE as expires_at", (expiry_minutes,))
+        expires_at = cursor.fetchone()['expires_at']
+    share_token = str(uuid.uuid4())
     cursor.execute(
-        "INSERT INTO shared_password (password_id, share_token) VALUES (%s, %s)",
-        (password_id, share_token)
+        "INSERT INTO shared_password (password_id, share_token, views_left, expires_at) VALUES (%s, %s, %s, %s)",
+        (password_id, share_token, views_left, expires_at)
     )
     conn.commit()
     conn.close()
@@ -457,10 +482,9 @@ def get_shared_password(share_token):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # Récupérer le mot de passe partagé
         cursor.execute(
             """
-            SELECT p.platform_name, p.password, sp.id_shared_password
+            SELECT p.platform_name, p.password, sp.id_shared_password, sp.views_left, sp.expires_at
             FROM shared_password sp
             JOIN password p ON sp.password_id = p.id_password
             WHERE sp.share_token = %s
@@ -469,8 +493,20 @@ def get_shared_password(share_token):
         shared_password = cursor.fetchone()
         if not shared_password:
             return render_template('show_password.html', error="Lien invalide ou expiré.")
-        
-        # Déchiffrer le mot de passe
+        # Vérifie expiration
+        if shared_password['expires_at']:
+            cursor.execute("SELECT NOW() as now")
+            now = cursor.fetchone()['now']
+            if shared_password['expires_at'] < now:
+                cursor.execute("DELETE FROM shared_password WHERE id_shared_password = %s", (shared_password['id_shared_password'],))
+                conn.commit()
+                return render_template('show_password.html', error="Lien expiré.")
+        # Vérifie le nombre de vues (sauf si illimité)
+        if shared_password['views_left'] == 0:
+            cursor.execute("DELETE FROM shared_password WHERE id_shared_password = %s", (shared_password['id_shared_password'],))
+            conn.commit()
+            return render_template('show_password.html', error="Lien expiré ou nombre de vues dépassé.")
+        # Décrypte le mot de passe
         key = get_encryption_key() if 'encryption_key' in session else None
         if not key:
             return render_template('show_password.html', error="Session expirée, veuillez vous reconnecter.")
@@ -479,16 +515,18 @@ def get_shared_password(share_token):
             decrypted_password = password_generator.decrypt(shared_password['password']).decode('utf-8')
         except Exception as e:
             decrypted_password = f"Erreur lors du déchiffrement : {str(e)}"
-        
-        # Supprimer le lien de partage après utilisation
-        cursor.execute(
-            """
-            DELETE FROM shared_password
-            WHERE id_shared_password = %s
-            """, (shared_password['id_shared_password'],)
-        )
-        conn.commit()
-
+        # Décrémente views_left si pas illimité
+        if shared_password['views_left'] > 0:
+            cursor.execute(
+                "UPDATE shared_password SET views_left = views_left - 1 WHERE id_shared_password = %s",
+                (shared_password['id_shared_password'],)
+            )
+            # Supprime si on arrive à 0
+            cursor.execute(
+                "DELETE FROM shared_password WHERE id_shared_password = %s AND views_left = 0",
+                (shared_password['id_shared_password'],)
+            )
+            conn.commit()
         return render_template('show_password.html', platform=shared_password['platform_name'], password=decrypted_password)
     except Exception as e:
         print(e)

@@ -47,5 +47,28 @@
             </tbody>
         </table>
     </section>
+
+    <!-- Section pour gérer les paramètres de partage -->
+    <section id="share-settings">
+        <h2>Paramètres de partage</h2>
+
+        <form method="POST" action="/parametres" class="mb-3">
+            <div class="mb-2">
+                <label for="default_views" class="form-label">Nombre de visionnages autorisés (mettre -1 pour illimité)
+                </label>
+                <input type="number" class="form-control" id="default_views" name="default_views"
+                    value="{{ share_settings.views_left or 1 }}" required>
+            </div>
+            <div class="mb-2">
+                <label for="default_expiry" class="form-label">Durée de validité (en minutes, 0 pour illimité)</label>
+                <input type="number" class="form-control" id="default_expiry" name="default_expiry"
+                    value="{{ share_settings.expiry_minutes}}" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Enregistrer</button>
+            {% if share_message %}
+            <div class="mt-2 alert alert-info">{{ share_message }}</div>
+            {% endif %}
+        </form>
+    </section>
 </div>
 {% endblock %}

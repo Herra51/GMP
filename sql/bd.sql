@@ -5,6 +5,8 @@ CREATE TABLE user (
     password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     encryption_salt VARBINARY(32) NOT NULL,
+    default_share_views INT DEFAULT 1,
+    default_share_expiry_minutes INT DEFAULT 2,
     PRIMARY KEY (id_user),
     UNIQUE (username),
     UNIQUE (email)
@@ -59,6 +61,8 @@ CREATE TABLE shared_password (
     password_id INT NOT NULL,
     share_token VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    views_left INT DEFAULT 1,
+    expires_at DATETIME DEFAULT NULL,
     PRIMARY KEY (id_shared_password),
     FOREIGN KEY (password_id) REFERENCES password (id_password) ON DELETE CASCADE
 );
