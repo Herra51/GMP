@@ -13,6 +13,7 @@
                 <option value="{{ categorie.id_password_category }}">{{ categorie.category_name }}</option>
                 {% endfor %}
             </select>
+            <button id="share-category-btn" class="btn btn-outline-success ms-2" style="display:none;">Partager la catégorie</button>
         </div>
 
         <button name="Exporter" class="btn btn-outline-primary d-flex align-items-center gap-2"
@@ -406,128 +407,55 @@
 
     // Filter passwords by category
     const categoryFilter = document.getElementById('category-filter');
-    categoryFilter.addEventListener('change', async () => {
-        const selectedCategory = categoryFilter.value;
-        const response = await fetch('/filter_passwords', {
+    const shareCategoryBtn = document.getElementById('share-category-btn');
+    categoryFilter.addEventListener('change', () => {
+        if (categoryFilter.value) {
+            shareCategoryBtn.style.display = 'inline-block';
+        } else {
+            shareCategoryBtn.style.display = 'none';
+        }
+    });
+    shareCategoryBtn.addEventListener('click', async () => {
+        const categoryId = categoryFilter.value;
+        if (!categoryId) return;
+        const response = await fetch('/share_category', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category: selectedCategory })
+            body: JSON.stringify({ category_id: categoryId })
         });
         const data = await response.json();
-        const tableBody = document.querySelector('.table.table-striped tbody');
-        tableBody.innerHTML = ''; // Vide les lignes existantes
-
-        if (data.passwords && data.passwords.length > 0) {
-            data.passwords.forEach(password => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                <td>${password.category_name || 'Aucune'}</td>
-                <td>${password.platform_name}</td>
-                <td>${password.login}</td>
-                <td>${password.url ? `<a href="${password.url}" target="_blank">${password.url}</a>` : ''}</td>
-                <td>
-                    <div class="input-group">
-                        <input type="password" value="${password.password}" class="form-control password-field" readonly>
-                        <button type="button" class="btn btn-outline-secondary toggle-password">Afficher</button>
-                        <button type="button" class="btn btn-outline-primary copy-password" data-password="${password.password}">Copier</button>
-                    </div>
-                </td>
-                <td>${formatDate(password.created_at)}</td>
-                <td>
-                    <button class="btn btn-outline-success btn-sm share-btn" data-id="${password.id_password}">Partager</button>
-                    <button class="btn btn-outline-warning btn-sm edit-btn" data-id="${password.id_password}">Modifier</button>
-                    <button class="btn btn-outline-danger btn-sm delete-btn" data-id="${password.id_password}">Supprimer</button>
-                </td>
-            `;
-                tableBody.appendChild(row);
-            });
+        const shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
+        const shareLinkContent = document.getElementById('share-link-content');
+        if (data.success) {
+            shareLinkContent.innerHTML = `
+            <div class="input-group">
+                <input class="form-control" id="share-link-input" value="${data.share_link}" readonly>
+                <button class="btn btn-outline-primary" id="copy-share-link-btn" type="button">Copier</button>
+            </div>
+            <div id="copy-success-msg" class="text-success mt-2" style="display:none;">Lien copié !</div>
+            <div class="alert alert-warning mt-3" style="font-size:0.95em;">
+                Attention : ce lien ne sera utilisable qu’une seule fois.
+            </div>
+        `;
+            setTimeout(() => {
+                document.getElementById('copy-share-link-btn').onclick = function () {
+                    const input = document.getElementById('share-link-input');
+                    input.select();
+                    input.setSelectionRange(0, 99999);
+                    navigator.clipboard.writeText(input.value).then(() => {
+                        document.getElementById('copy-success-msg').style.display = 'block';
+                        setTimeout(() => {
+                            document.getElementById('copy-success-msg').style.display = 'none';
+                        }, 1500);
+                    });
+                };
+            }, 100);
         } else {
-            const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="7" class="text-center">Aucun mot de passe trouvé pour cette catégorie.</td>`;
-            tableBody.appendChild(row);
+            shareLinkContent.textContent = 'Erreur lors du partage';
         }
-
-        // Réactive les boutons et comportements sur les nouvelles lignes
-        tableBody.querySelectorAll('.copy-password').forEach(button => {
-            button.addEventListener('click', () => {
-                const password = button.getAttribute('data-password');
-                navigator.clipboard.writeText(password).then(() => {
-                    alert('Mot de passe copié dans le presse-papiers !');
-                });
-            });
-        });
-        tableBody.querySelectorAll('.toggle-password').forEach(button => {
-            button.addEventListener('click', () => {
-                const passwordField = button.previousElementSibling;
-                if (passwordField.type === 'password') {
-                    passwordField.type = 'text';
-                    button.textContent = 'Cacher';
-                } else {
-                    passwordField.type = 'password';
-                    button.textContent = 'Afficher';
-                }
-            });
-        });
-        tableBody.querySelectorAll('.share-btn').forEach(button => {
-            button.addEventListener('click', async () => {
-                const id = button.getAttribute('data-id');
-                const response = await fetch(`/share_password`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: id })
-                });
-                const data = await response.json();
-                const shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
-                const shareLinkContent = document.getElementById('share-link-content');
-                if (data.success) {
-                    shareLinkContent.innerHTML = `
-                    <div class="input-group">
-                        <input class="form-control" id="share-link-input" value="${data.share_link}" readonly>
-                        <button class="btn btn-outline-primary" id="copy-share-link-btn" type="button">Copier</button>
-                    </div>
-                    <div id="copy-success-msg" class="text-success mt-2" style="display:none;">Lien copié !</div>
-                    <div class="alert alert-warning mt-3" style="font-size:0.95em;">
-                        Attention : ce lien ne sera utilisable qu’une seule fois. Dès qu’il est utilisé, il devient invalide.
-                    </div>
-                `;
-                    setTimeout(() => {
-                        document.getElementById('copy-share-link-btn').onclick = function () {
-                            const input = document.getElementById('share-link-input');
-                            input.select();
-                            input.setSelectionRange(0, 99999);
-                            navigator.clipboard.writeText(input.value).then(() => {
-                                document.getElementById('copy-success-msg').style.display = 'block';
-                                setTimeout(() => {
-                                    document.getElementById('copy-success-msg').style.display = 'none';
-                                }, 1500);
-                            });
-                        };
-                    }, 100);
-                } else {
-                    shareLinkContent.textContent = 'Erreur lors du partage';
-                }
-                shareModal.show();
-            });
-        });
-        tableBody.querySelectorAll('.edit-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const id = button.getAttribute('data-id');
-                document.getElementById('edit-password-id').value = id;
-                document.getElementById('edit-password-value').value = '';
-                const editModal = new bootstrap.Modal(document.getElementById('editModal'));
-                editModal.show();
-            });
-        });
-        tableBody.querySelectorAll('.delete-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const id = button.getAttribute('data-id');
-                document.getElementById('delete-password-id').value = id;
-                const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
-                deleteModal.show();
-            });
-        });
+        shareModal.show();
     });
-
+    // ...existing code...
     // Add password => ajoute les inputs et actives le bouton de validation
     document.querySelector('button[name="add_password"]').addEventListener('click', function () {
         const modal = new bootstrap.Modal(document.getElementById('addPasswordModal'));

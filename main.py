@@ -611,7 +611,100 @@ def get_shared_password(share_token):
     finally:
         conn.close()
 
+@app.route('/share_category', methods=['POST'])
+@login_required
+def share_category():
+    data = request.get_json()
+    category_id = data.get('category_id')
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Récupère les paramètres de partage de l'utilisateur
+    cursor.execute("SELECT default_share_views, default_share_expiry_minutes FROM user WHERE id_user=%s", (user_id,))
+    user_settings = cursor.fetchone() or {'default_share_views': 1, 'default_share_expiry_minutes': 120}
+    views_left = user_settings['default_share_views']
+    expiry_minutes = user_settings['default_share_expiry_minutes']
+    expires_at = None
+    if expiry_minutes and expiry_minutes > 0:
+        cursor.execute("SELECT NOW() + INTERVAL %s MINUTE as expires_at", (expiry_minutes,))
+        expires_at = cursor.fetchone()['expires_at']
+    share_token = str(uuid.uuid4())
+    cursor.execute(
+        "INSERT INTO shared_category (category_id, share_token, views_left, expires_at) VALUES (%s, %s, %s, %s)",
+        (category_id, share_token, views_left, expires_at)
+    )
+    conn.commit()
+    conn.close()
+    share_link = f"{request.host_url}shared_category/{share_token}"
+    return jsonify({"success": True, "share_link": share_link})
 
+@app.route('/shared_category/<share_token>', methods=['GET'])
+def get_shared_category(share_token):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT sc.id_shared_category, sc.views_left, sc.expires_at, sc.category_id, pc.category_name
+            FROM shared_category sc
+            JOIN password_category pc ON sc.category_id = pc.id_password_category
+            WHERE sc.share_token = %s
+            """, (share_token,)
+        )
+        shared_cat = cursor.fetchone()
+        if not shared_cat:
+            return render_template('show_password.html', error="Lien invalide ou expiré.")
+        # Vérifie expiration
+        if shared_cat['expires_at']:
+            cursor.execute("SELECT NOW() as now")
+            now = cursor.fetchone()['now']
+            if shared_cat['expires_at'] < now:
+                cursor.execute("DELETE FROM shared_category WHERE id_shared_category = %s", (shared_cat['id_shared_category'],))
+                conn.commit()
+                return render_template('show_password.html', error="Lien expiré.")
+        # Vérifie le nombre de vues (sauf si illimité)
+        if shared_cat['views_left'] == 0:
+            cursor.execute("DELETE FROM shared_category WHERE id_shared_category = %s", (shared_cat['id_shared_category'],))
+            conn.commit()
+            return render_template('show_password.html', error="Lien expiré ou nombre de vues dépassé.")
+        # Récupère tous les mots de passe de la catégorie
+        cursor.execute(
+            """
+            SELECT platform_name, login, password, url, created_at
+            FROM password
+            WHERE category_id = %s
+            """, (shared_cat['category_id'],)
+        )
+        passwords = cursor.fetchall()
+        # Déchiffre les mots de passe si possible
+        key = None
+        if 'encryption_key' in session:
+            key = get_encryption_key()
+            password_generator = PasswordGenerator(key)
+            for pwd in passwords:
+                try:
+                    pwd['password'] = password_generator.decrypt(pwd['password']).decode('utf-8')
+                except Exception as e:
+                    pwd['password'] = f"Erreur de déchiffrement: {e}"
+        # Décrémente views_left si pas illimité
+        if shared_cat['views_left'] > 0:
+            cursor.execute(
+                "UPDATE shared_category SET views_left = views_left - 1 WHERE id_shared_category = %s",
+                (shared_cat['id_shared_category'],)
+            )
+            cursor.execute(
+                "DELETE FROM shared_category WHERE id_shared_category = %s AND views_left = 0",
+                (shared_cat['id_shared_category'],)
+            )
+            conn.commit()
+        return render_template('show_password.html', category=shared_cat['category_name'], passwords=passwords)
+    except Exception as e:
+        print(e)
+        return render_template('show_password.html', error="Une erreur est survenue.")
+    finally:
+        conn.close()
+        
+        
 @app.route('/filter_passwords', methods=['POST'])
 @login_required
 def filter_passwords():

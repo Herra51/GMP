@@ -67,3 +67,13 @@ CREATE TABLE shared_password (
     PRIMARY KEY (id_shared_password),
     FOREIGN KEY (password_id) REFERENCES password (id_password) ON DELETE CASCADE
 );
+
+CREATE TABLE shared_category (
+    id_shared_category INT auto_increment PRIMARY KEY,
+    category_id INT NOT NULL,
+    share_token VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    views_left INT DEFAULT 1,
+    expires_at DATETIME DEFAULT NULL,
+    FOREIGN KEY (category_id) REFERENCES password_category (id_password_category) ON DELETE CASCADE
+);
