@@ -15,10 +15,14 @@
             </select>
         </div>
 
-        <button name="Exporter" class="btn btn-outline-primary d-flex align-items-center gap-2" style="box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
-                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.6a.5.5 0 0 1 1 0v2.6A2 2 0 0 1 14 15H2a2 2 0 0 1-2-2v-2.6a.5.5 0 0 1 .5-.5z"/>
-                <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+        <button name="Exporter" class="btn btn-outline-primary d-flex align-items-center gap-2"
+            style="box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-download"
+                viewBox="0 0 16 16">
+                <path
+                    d="M.5 9.9a.5.5 0 0 1 .5.5v2.6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.6a.5.5 0 0 1 1 0v2.6A2 2 0 0 1 14 15H2a2 2 0 0 1-2-2v-2.6a.5.5 0 0 1 .5-.5z" />
+                <path
+                    d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z" />
             </svg>
             Exporter
         </button>
@@ -383,18 +387,24 @@
     });
     // Fonction pour formater la date
     function formatDate(dateStr) {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (isNaN(d)) return dateStr;
-    return d.toLocaleString('fr-FR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
-    
+        if (!dateStr) return '';
+        // Si format SQL ou ISO, on extrait et affiche tel quel (pas de conversion JS)
+        let match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(dateStr);
+        if (match) {
+            const [_, y, m, d, h, min, s] = match;
+            return `${y}-${m}-${d} ${h}:${min}:${s}`;
+        }
+        // Si format Wed, 11 Jun 2025 12:19:31 GMT, on extrait aussi
+        match = /^[A-Za-z]{3}, (\d{2}) ([A-Za-z]{3}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT/.exec(dateStr);
+        if (match) {
+            const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+            const [_, d, mon, y, h, min, s] = match;
+            return `${y}-${months[mon]}-${d} ${h}:${min}:${s}`;
+        }
+        // Sinon, retourne la chaîne brute
+        return dateStr;
+    }
+
     // Filter passwords by category
     const categoryFilter = document.getElementById('category-filter');
     categoryFilter.addEventListener('change', async () => {
