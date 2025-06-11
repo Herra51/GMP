@@ -8,6 +8,8 @@ from functools import wraps
 import uuid, os
 from dotenv import load_dotenv
 from libs.categories_user import get_categories
+import hashlib
+import secrets
 load_dotenv()
 
 app = Flask(__name__)
@@ -35,6 +37,20 @@ def login_required(f):
 
 @app.route('/generate_password')
 def generate_password():
+    user_id = session['user_id']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT password FROM user WHERE id_user = %s", (user_id,))
+        user = cursor.fetchone()
+    except pymysql.Error as e:
+        print(f"An error occurred Mysql: {e}")
+        return render_template('index.html', passwords=[], categories=[], error="Erreur MySQL lors de la récupération des mots de passe.", username=session['user_id'])
+    except Exception as e:
+        print(e)
+        return render_template('index.html', passwords=[], categories=[], error="Erreur inattendue lors de la récupération des mots de passe.", username=session['user_id'])
+    finally:
+        conn.close()
     key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
     password_generator = PasswordGenerator(key)
     multiprocessing.freeze_support()
@@ -42,6 +58,11 @@ def generate_password():
         encrypted_passwords = pool.map(generate_password_wrapper, [password_generator] * 100)
     return jsonify({"passwords": encrypted_passwords})
 
+def derive_key(password, salt, iterations=100_000):
+    # PBKDF2-HMAC-SHA256
+    return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations, dklen=32)
+
+# --- INSCRIPTION ---
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -49,11 +70,15 @@ def register():
         email = request.form['email']
         password = request.form['password']
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-
+        # Génère un sel unique pour le chiffrement (non secret)
+        encryption_salt = secrets.token_bytes(16)
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO user (username, email, password) VALUES (%s, %s, %s)", (username, email, hashed_password))
+            cursor.execute(
+                "INSERT INTO user (username, email, password, encryption_salt) VALUES (%s, %s, %s, %s)",
+                (username, email, hashed_password, encryption_salt)
+            )
             conn.commit()
         except pymysql.Error as e:
             print(f"An error occurred Mysql: {e}")
@@ -61,16 +86,15 @@ def register():
             print(e)
         finally:
             conn.close()
-
         return redirect(url_for('login'))
     return render_template('auth/register.html')
 
+# --- CONNEXION ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -86,15 +110,25 @@ def login():
             stored_password = user.get('password')
             if stored_password and bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
                 session['user_id'] = user['id_user']
-                print(user['id_user'])
-                return redirect(url_for('home'))
+                # Dérive la clé à partir du mot de passe de connexion et du sel stocké
+                salt = user['encryption_salt']
+                if isinstance(salt, str):
+                    salt = salt.encode('latin1')  # ou base64 decode selon stockage
+                derived_key = derive_key(password, salt)
+                session['encryption_key'] = derived_key.hex()  # Stocke la clé dérivée (hex) en session
+                return redirect(url_for('index'))
             else:
                 return render_template('auth/login.html', message='Invalid username or password')
         else:
             return render_template('auth/login.html', message='Invalid username or password')
     return render_template('auth/login.html')
 
-# Route to get all passwords
+# --- UTILISATION DE LA CLÉ DÉRIVÉE ---
+def get_encryption_key():
+    # Récupère la clé dérivée depuis la session (hex -> bytes)
+    return bytes.fromhex(session['encryption_key'])
+
+# --- AJOUT/MODIF/LECTURE DE MOTS DE PASSE ---
 @app.route('/')
 @login_required
 def index():
@@ -111,7 +145,7 @@ def index():
             (user_id,)
         )
         passwords = cursor.fetchall()
-        key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+        key = get_encryption_key()
         password_generator = PasswordGenerator(key)
         for password in passwords:
             try:
@@ -139,21 +173,52 @@ def change_password():
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT password FROM user WHERE id_user = %s", (user_id,))
+        # Récupérer l'ancien hash et le sel actuel
+        cursor.execute("SELECT password, encryption_salt FROM user WHERE id_user = %s", (user_id,))
         user = cursor.fetchone()
         if not user or not bcrypt.checkpw(current_password.encode('utf-8'), user['password'].encode('utf-8')):
             message = "Mot de passe actuel incorrect."
         else:
+            # 1. Générer un nouveau sel
+            new_salt = secrets.token_bytes(16)
+            # 2. Dériver la nouvelle clé
+            new_derived_key = derive_key(new_password, new_salt)
+            # 3. Dériver l'ancienne clé
+            old_salt = user['encryption_salt']
+            if isinstance(old_salt, str):
+                old_salt = old_salt.encode('latin1')
+            old_derived_key = derive_key(current_password, old_salt)
+            # 4. Récupérer tous les mots de passe de l'utilisateur
+            cursor.execute("SELECT id_password, password FROM password WHERE user_id = %s", (user_id,))
+            passwords = cursor.fetchall()
+            # 5. Pour chaque mot de passe, déchiffrer avec l'ancienne clé puis ré-encrypter avec la nouvelle
+            old_pg = PasswordGenerator(old_derived_key)
+            new_pg = PasswordGenerator(new_derived_key)
+            for pwd in passwords:
+                try:
+                    decrypted = old_pg.decrypt(pwd['password'])
+                    re_encrypted = new_pg.encrypt(decrypted).decode('utf-8')
+                    cursor.execute(
+                        "UPDATE password SET password = %s WHERE id_password = %s",
+                        (re_encrypted, pwd['id_password'])
+                    )
+                except Exception as e:
+                    print(f"Erreur lors du ré-encryptage du mot de passe {pwd['id_password']} : {e}")
+            # 6. Mettre à jour le hash, le nouveau sel et commit
             hashed_new = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-            cursor.execute("UPDATE user SET password = %s WHERE id_user = %s", (hashed_new, user_id))
+            cursor.execute(
+                "UPDATE user SET password = %s, encryption_salt = %s WHERE id_user = %s",
+                (hashed_new, new_salt, user_id)
+            )
             conn.commit()
+            # 7. Mettre à jour la clé dérivée en session
+            session['encryption_key'] = new_derived_key.hex()
             message = "Mot de passe modifié avec succès."
     except Exception as e:
         print(e)
         message = "Erreur lors du changement de mot de passe."
     finally:
         conn.close()
-    # Recharge la page paramètres avec le message
     return redirect(url_for('settings', message=message))
 
 @app.route('/parametres')
@@ -186,6 +251,7 @@ def settings():
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
+    session.pop('encryption_key', None)
     return redirect(url_for('login'))
 
 @app.route('/add_category', methods=['POST'])
@@ -219,15 +285,14 @@ def add_password():
         data = request.json
         platform_name = data.get('platform_name')
         password = data.get('password')
-        login = data.get('login')  # Nouveau champ
-        url = data.get('url')  # Nouveau champ
+        login = data.get('login')
+        url = data.get('url')
         user_id = session['user_id']
         category_id = data.get('category_id')
         if not category_id:
             category_id = 0
-        # Convert the password to bytes
         password = password.encode('utf-8')
-        key = os.getenv('ENCRYPTION_KEY')
+        key = get_encryption_key()
         password_generator = PasswordGenerator(key)
         encrypted = password_generator.encrypt(password).decode('utf-8')
 
@@ -257,7 +322,6 @@ def edit_password():
     idPassword = data.get('id')
     newPassword = data.get('password')
     user_id = session['user_id']
-
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -270,9 +334,8 @@ def edit_password():
         user = cursor.fetchone()
         if not user:
             return jsonify({"success": False, "message": "User not found"}), 404
-        
         password = newPassword.encode('utf-8')
-        key = os.getenv('ENCRYPTION_KEY')
+        key = get_encryption_key()
         password_generator = PasswordGenerator(key)
         encrypted = password_generator.encrypt(password).decode('utf-8')
 
@@ -371,7 +434,9 @@ def get_shared_password(share_token):
             return render_template('show_password.html', error="Lien invalide ou expiré.")
         
         # Déchiffrer le mot de passe
-        key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+        key = get_encryption_key() if 'encryption_key' in session else None
+        if not key:
+            return render_template('show_password.html', error="Session expirée, veuillez vous reconnecter.")
         password_generator = PasswordGenerator(key)
         try:
             decrypted_password = password_generator.decrypt(shared_password['password']).decode('utf-8')
@@ -425,7 +490,7 @@ def filter_passwords():
                 """, (category_id, user_id)
             )
         passwords = cursor.fetchall()
-        key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+        key = get_encryption_key()
         password_generator = PasswordGenerator(key)
         for password in passwords:
             try:
@@ -455,7 +520,7 @@ def generate_kdbx_route():
     
     
     
-    return generate_kdbx(user_id,get_db_connection(), password)
+    return generate_kdbx(user_id, get_db_connection(), password, get_encryption_key())
 
 
 @app.route('/rename_category', methods=['POST'])

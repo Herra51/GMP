@@ -4,6 +4,7 @@ CREATE TABLE user (
     email VARCHAR(100) NOT NULL,
     password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    encryption_salt VARBINARY(32) NOT NULL,
     PRIMARY KEY (id_user)
 );
 
