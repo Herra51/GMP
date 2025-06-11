@@ -1,16 +1,16 @@
--- format : delimiter //
 delimiter //
 
 CREATE OR REPLACE PROCEDURE historiser_table()
 BEGIN
-    -- Supprimer les triggers s'ils existent déjà
-    DROP TRIGGER IF EXISTS password_after_insert;
-    DROP TRIGGER IF EXISTS password_after_update;
-    DROP TRIGGER IF EXISTS password_after_delete;
-    
+    -- Déclarer les variables en tout premier
     DECLARE trigger_insert VARCHAR(2000);
     DECLARE trigger_update VARCHAR(2000);
     DECLARE trigger_delete VARCHAR(2000);
+
+    -- Ensuite seulement, les instructions
+    DROP TRIGGER IF EXISTS password_after_insert;
+    DROP TRIGGER IF EXISTS password_after_update;
+    DROP TRIGGER IF EXISTS password_after_delete;
 
     SET trigger_insert = '
         CREATE TRIGGER password_after_insert
@@ -73,13 +73,6 @@ BEGIN
     EXECUTE IMMEDIATE trigger_update;
     EXECUTE IMMEDIATE trigger_delete;
 
-/*
-format :
-
-END //
-delimiter ;
-*/
 END
-// delimiter;
-
-CALL historiser_table ();
+//
+delimiter ;
