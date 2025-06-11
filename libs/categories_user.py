@@ -10,7 +10,6 @@ def get_categories():
     try:
         cursor.execute("SELECT * FROM password_category where user_id = %s", (user_id,))
         categories = cursor.fetchall() or []
-        print("categories", categories)
         return categories
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")

@@ -87,7 +87,7 @@ def login():
             if stored_password and bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
                 session['user_id'] = user['id_user']
                 print(user['id_user'])
-                return redirect(url_for('home'))
+                return redirect(url_for('index'))
             else:
                 return render_template('auth/login.html', message='Invalid username or password')
         else:
