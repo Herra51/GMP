@@ -1,6 +1,5 @@
 -- format : delimiter //
-delimiter /
-/
+delimiter //
 
 CREATE OR REPLACE PROCEDURE historiser_table()
 BEGIN
@@ -81,9 +80,6 @@ END //
 delimiter ;
 */
 END
-/
-/
-
-delimiter;
+// delimiter;
 
 CALL historiser_table ();
