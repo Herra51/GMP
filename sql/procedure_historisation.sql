@@ -73,6 +73,7 @@ BEGIN
     EXECUTE IMMEDIATE trigger_update;
     EXECUTE IMMEDIATE trigger_delete;
 
-END
-//
+END// 
 delimiter ;
+
+CALL historiser_table ();
