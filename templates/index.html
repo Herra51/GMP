@@ -1,27 +1,252 @@
 {% extends 'base.html' %}
-{% block title %}Home{% endblock %}
+{% block title %}Password List{% endblock %}
 
 {% block content %}
-<div>
-    <button name="Exporter">Exporter</button>
-    <div id="table-container">
-        <table>
-            <thead>
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center my-3">
+        <div class="d-flex justify-content-between align-items-center my-3">
+            <button name="add_password" class="btn btn-success">Ajouter une entrée</button>
+            <button name="confirm_add" class="btn btn-primary" style="display: none;">Valider</button>
+            <select id="category-filter" class="form-select w-auto ms-2">
+                <option value="">Toutes</option>
+                {% for categorie in categories %}
+                <option value="{{ categorie.id_password_category }}">{{ categorie.category_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <button name="Exporter">Exporter</button>
+        <div id="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Passwords</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Bouton pour ouvrir le modal des catégories -->
+        <button type="button" class="btn btn-secondary mb-3" id="open-manage-categories-btn">Gérer les
+            catégories</button>
+    </div>
+
+
+    <div class="overlay" id="overlay">
+        <div class="password-panel card" id="password-panel">
+            <div class="card-body">
+                <h3 class="card-title">Password Generator</h3>
+                <div class="mb-2">
+                    <label for="length" class="form-label">Length:</label>
+                    <input type="number" id="length" min="4" max="32" value="12" class="form-control">
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="include-uppercase" class="form-check-input" checked>
+                    <label class="form-check-label" for="include-uppercase">Include Uppercase</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="include-numbers" class="form-check-input" checked>
+                    <label class="form-check-label" for="include-numbers">Include Numbers</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="include-symbols" class="form-check-input" checked>
+                    <label class="form-check-label" for="include-symbols">Include Symbols</label>
+                </div>
+                <div class="mb-2 mt-2">
+                    <label for="exclude-characters" class="form-label">Exclude Characters:</label>
+                    <input type="text" id="exclude-characters" class="form-control" placeholder="e.g., abc123">
+                </div>
+                <button class="btn btn-primary" id="generate-btn">Generate</button>
+                <button class="btn btn-danger" id="close-panel-btn">Close</button>
+                <div class="mt-3">
+                    <p><strong>Generated Password:</strong></p>
+                    <p id="generated-password" style="word-break: break-word;"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="table-container" class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead class="table-dark">
                 <tr>
-                    <th>Passwords</th>
+                    <th>Catégorie</th>
+                    <th>Plateforme</th>
+                    <th>Login</th>
+                    <th>URL</th>
+                    <th>Mot de passe</th>
+                    <th>Date création</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
+                {% for password in passwords %}
+                <tr>
+                    <td>{{ password.category_name }}</td>
+                    <td>{{ password.platform_name }}</td>
+                    <td>{{ password.login }}</td>
+                    <td>
+                        {% if password.url %}
+                        <a href="{{ password.url }}" target="_blank">{{ password.url }}</a>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="input-group">
+                            <input type="password" value="{{ password.password }}" class="form-control password-field"
+                                readonly>
+                            <button type="button" class="btn btn-outline-secondary toggle-password">Afficher</button>
+                            <button type="button" class="btn btn-outline-primary copy-password"
+                                data-password="{{ password.password }}">Copier</button>
+                        </div>
+                    </td>
+                    <td>{{ password.created_at }}</td>
+                    <td>
+                        <button class="btn btn-outline-success btn-sm share-btn"
+                            data-id="{{ password.id_password }}">Partager</button>
+                        <button class="btn btn-outline-warning btn-sm edit-btn"
+                            data-id="{{ password.id_password }}">Modifier</button>
+                        <button class="btn btn-outline-danger btn-sm delete-btn"
+                            data-id="{{ password.id_password }}">Supprimer</button>
+                    </td>
+                </tr>
+                {% endfor %}
             </tbody>
         </table>
     </div>
+
+    <!-- Modal Partager -->
+    <div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="shareModalLabel">Lien de partage</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="share-link-content"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Modifier -->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <form id="edit-password-form" class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editModalLabel">Modifier le mot de passe</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit-password-id">
+                    <div class="mb-3">
+                        <label for="edit-password-value" class="form-label">Nouveau mot de passe</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="edit-password-value" required>
+                            <button type="button" class="btn btn-outline-secondary" id="edit-generate-btn"
+                                title="Générer">
+                                Générer
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label for="edit-length" class="form-label">Longueur :</label>
+                        <input type="number" id="edit-length" min="4" max="32" value="12" class="form-control">
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="edit-include-uppercase" class="form-check-input" checked>
+                        <label class="form-check-label" for="edit-include-uppercase">Majuscules</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="edit-include-numbers" class="form-check-input" checked>
+                        <label class="form-check-label" for="edit-include-numbers">Chiffres</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="edit-include-symbols" class="form-check-input" checked>
+                        <label class="form-check-label" for="edit-include-symbols">Symboles</label>
+                    </div>
+                    <div class="mb-2 mt-2">
+                        <label for="edit-exclude-characters" class="form-label">Exclure caractères :</label>
+                        <input type="text" id="edit-exclude-characters" class="form-control" placeholder="ex: abc123">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Supprimer -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Supprimer le mot de passe</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+                    Êtes-vous sûr de vouloir supprimer ce mot de passe ?
+                    <input type="hidden" id="delete-password-id">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" id="confirm-delete-btn">Supprimer</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Gérer les catégories -->
+    <div class="modal fade" id="manageCategoriesModal" tabindex="-1" aria-labelledby="manageCategoriesModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="add-category-modal-form">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="manageCategoriesModalLabel">Gérer les catégories</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3 d-flex">
+                            <input type="text" id="modal-category-name" name="category_name" class="form-control me-2"
+                                placeholder="Nouvelle catégorie" required>
+                            <button type="submit" class="btn btn-success">Ajouter</button>
+                        </div>
+                        <ul class="list-group" id="category-list">
+                            {% for categorie in categories %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center"
+                                data-id="{{ categorie.id_password_category }}">
+                                <span class="category-label">{{ categorie.category_name }}</span>
+                                <div>
+                                    <button type="button"
+                                        class="btn btn-sm btn-outline-primary rename-category-btn">Renommer</button>
+                                    <button type="button"
+                                        class="btn btn-sm btn-outline-danger delete-category-btn">Supprimer</button>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+
 </div>
 {% endblock %}
 
-{% block scripts %}
+{%block scripts%}
 <script>
-    const button = document.querySelector('button[name="Exporter"]');
-    button.addEventListener('click', async () => {
+
+    const buttonExport = document.querySelector('button[name="Exporter"]');
+    buttonExport.addEventListener('click', async () => {
         const Password = prompt('Mot de passe du fichier :');
         const response = await fetch('/generate_kdbx', {
             method: 'POST',
@@ -44,34 +269,419 @@
                 `).join('')}
         `;
     });
+
+
+    // Copy password to clipboard
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.copy-password').forEach(button => {
+            button.addEventListener('click', () => {
+                const password = button.getAttribute('data-password');
+                navigator.clipboard.writeText(password).then(() => {
+                    alert('Mot de passe copié dans le presse-papiers !');
+                }).catch(err => {
+                    console.error('Erreur lors de la copie : ', err);
+                });
+            });
+        });
+        // Toggle password visibility
+        document.querySelectorAll('.toggle-password').forEach(button => {
+            button.addEventListener('click', () => {
+                const passwordField = button.previousElementSibling;
+                if (passwordField.type === 'password') {
+                    passwordField.type = 'text';
+                    button.textContent = 'Cacher';
+                } else {
+                    passwordField.type = 'password';
+                    button.textContent = 'Afficher';
+                }
+            });
+        });
+    });
+    // Filter passwords by category
+    const categoryFilter = document.getElementById('category-filter');
+    categoryFilter.addEventListener('change', async () => {
+        const selectedCategory = categoryFilter.value;
+        const response = await fetch('/filter_passwords', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: selectedCategory })
+        });
+        const data = await response.json();
+        const tableBody = document.querySelector('table tbody');
+        tableBody.innerHTML = ''; // Clear existing rows
+        data.passwords.forEach(password => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${password.category_name}</td>
+                <td>${password.platform_name}</td>
+                <td>${password.password}</td>
+                <td>${password.created_at}</td>
+                <td>
+                    <button class="share-btn" data-id="${password.id_password}">Partager</button>
+                    <button class="edit-btn" data-id="${password.id_password}">Modifier</button>
+                    <button class="delete-btn" data-id="${password.id_password}">Supprimer</button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+    });
+
+    // Add password => ajoute les inputs et actives le bouton de validation
+    const button = document.querySelector('button[name="add_password"]');
+
+    button.addEventListener('click', async () => {
+        const tableContainer = document.querySelector('table tbody');
+        const overlay = document.getElementById('overlay');
+
+        const existingInputRow = tableContainer.querySelector('tr input#platform_name');
+        if (!existingInputRow) {
+            const newRow = document.createElement('tr');
+            const currentDate = new Date().toISOString().split('T')[0];
+
+            newRow.innerHTML = `
+                <td><select id="category_id">
+                    <option value="0">Aucune</option>
+                    {% for categorie in categories %}
+                        <option value="{{ categorie.id_password_category }}">{{ categorie.category_name }}</option>
+                    {% endfor %}
+                </select></td>
+                <td><input type="text" id="platform_name" placeholder="Nom de la plateforme"></td>
+                <td><input type="text" id="login" placeholder="Identifiant"></td>
+                <td><input type="text" id="url" placeholder="URL"></td>
+                <td>
+                    <input type="text" id="password" placeholder="Mot de passe">
+                    <button type="button" class="open-generator-btn">Générer</button>
+                </td>
+                
+                <td>${currentDate}</td>
+            `;
+
+            tableContainer.prepend(newRow);
+            const confirmButton = document.querySelector('button[name="confirm_add"]');
+            confirmButton.style.display = 'block';
+            const button_add_password = document.querySelector('button[name="confirm_add"]');
+            const input_add_password = document.querySelector('input[id="password"]');
+            button_add_password.addEventListener('click', addPassword);
+            input_add_password.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    addPassword();
+                }
+            });
+            const open_generator = document.querySelector('button[class="open-generator-btn"]');
+            const passwordPanel = document.getElementById('password-panel');
+            const overlay = document.getElementById('overlay');
+
+            open_generator.addEventListener('click', () => {
+                const overlay = document.getElementById('overlay');
+                const passwordPanel = document.getElementById('password-panel');
+                overlay.classList.add('active');
+                passwordPanel.classList.add('active');
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    const overlay = document.getElementById('overlay');
+                    const passwordPanel = document.getElementById('password-panel');
+                    overlay.classList.remove('active');
+                    passwordPanel.classList.remove('active');
+                }
+            });
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) {
+                    overlay.classList.remove('active');
+                    passwordPanel.classList.remove('active');
+                }
+            });
+            const closePanelBtn = document.getElementById('close-panel-btn');
+            closePanelBtn.addEventListener('click', () => {
+                overlay.classList.remove('active');
+                passwordPanel.classList.remove('active');
+            });
+            const generateBtn = document.getElementById('generate-btn');
+            const generatedPassword = document.getElementById('generated-password');
+            generateBtn.addEventListener('click', () => {
+                const length = parseInt(document.getElementById('length').value, 10);
+                const includeUppercase = document.getElementById('include-uppercase').checked;
+                const includeNumbers = document.getElementById('include-numbers').checked;
+                const includeSymbols = document.getElementById('include-symbols').checked;
+                const excludeCharacters = document.getElementById('exclude-characters').value;
+
+                const generatedPassword = generatePassword(length, includeUppercase, includeNumbers, includeSymbols, excludeCharacters);
+                input_add_password.value = generatedPassword;
+            });
+        }
+    });
+
+    // Confirm add password => envoie la requête pour ajouter le mot de passe
+    async function addPassword() {
+        const plateforme = document.querySelector('input[id="platform_name"]').value;
+        const password = document.querySelector('input[id="password"]').value;
+        const categoryId = document.querySelector('select[id="category_id"]').value;
+        const login = document.querySelector('input[id="login"]').value;
+        const url = document.querySelector('input[id="url"]').value;
+        const response = await fetch('/add_password', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                platform_name: plateforme,
+                password: password,
+                category_id: categoryId,
+                login: login,
+                url: url
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Erreur lors de l\'ajout du mot de passe');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Share button
+        document.querySelectorAll('.share-btn').forEach(button => {
+            button.addEventListener('click', async () => {
+                const id = button.getAttribute('data-id');
+                const response = await fetch(`/share_password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id })
+                });
+                const data = await response.json();
+                const shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
+                const shareLinkContent = document.getElementById('share-link-content');
+                if (data.success) {
+                    shareLinkContent.innerHTML = `
+                <div class="input-group">
+                    <input class="form-control" id="share-link-input" value="${data.share_link}" readonly>
+                    <button class="btn btn-outline-primary" id="copy-share-link-btn" type="button">Copier</button>
+                </div>
+                <div id="copy-success-msg" class="text-success mt-2" style="display:none;">Lien copié !</div>
+                <div class="alert alert-warning mt-3" style="font-size:0.95em;">
+                    Attention : ce lien ne sera utilisable qu’une seule fois. Dès qu’il est utilisé, il devient invalide.
+                </div>
+            `;
+                    // Ajoute l'écouteur pour le bouton copier
+                    setTimeout(() => {
+                        document.getElementById('copy-share-link-btn').onclick = function () {
+                            const input = document.getElementById('share-link-input');
+                            input.select();
+                            input.setSelectionRange(0, 99999);
+                            navigator.clipboard.writeText(input.value).then(() => {
+                                document.getElementById('copy-success-msg').style.display = 'block';
+                                setTimeout(() => {
+                                    document.getElementById('copy-success-msg').style.display = 'none';
+                                }, 1500);
+                            });
+                        };
+                    }, 100);
+                } else {
+                    shareLinkContent.textContent = 'Erreur lors du partage';
+                }
+                shareModal.show();
+            });
+        });
+
+        // Edit button
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const id = button.getAttribute('data-id');
+                document.getElementById('edit-password-id').value = id;
+                document.getElementById('edit-password-value').value = '';
+                const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+                editModal.show();
+            });
+        });
+
+        // Générateur dans le modal d'édition
+        document.getElementById('edit-generate-btn').addEventListener('click', function (e) {
+            e.preventDefault();
+            const length = parseInt(document.getElementById('edit-length').value, 10);
+            const includeUppercase = document.getElementById('edit-include-uppercase').checked;
+            const includeNumbers = document.getElementById('edit-include-numbers').checked;
+            const includeSymbols = document.getElementById('edit-include-symbols').checked;
+            const excludeCharacters = document.getElementById('edit-exclude-characters').value;
+            const generatedPassword = generatePassword(length, includeUppercase, includeNumbers, includeSymbols, excludeCharacters);
+            document.getElementById('edit-password-value').value = generatedPassword;
+        });
+
+        document.getElementById('edit-password-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const id = document.getElementById('edit-password-id').value;
+            const newPassword = document.getElementById('edit-password-value').value;
+
+            const response = await fetch('/edit', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, password: newPassword })
+            });
+            const data = await response.json();
+            const editModal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
+            if (data.success) {
+                editModal.hide();
+                window.location.reload();
+            } else {
+                alert('Erreur lors de la modification');
+            }
+        });
+
+        // Delete button
+        document.querySelectorAll('.delete-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const id = button.getAttribute('data-id');
+                document.getElementById('delete-password-id').value = id;
+                const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+                deleteModal.show();
+            });
+        });
+
+        document.getElementById('confirm-delete-btn').addEventListener('click', async function () {
+            const id = document.getElementById('delete-password-id').value;
+            const response = await fetch(`/delete`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            });
+            const data = await response.json();
+            const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteModal'));
+            if (data.success) {
+                deleteModal.hide();
+                window.location.reload();
+            } else {
+                alert('Erreur lors de la suppression');
+            }
+        });
+
+        document.getElementById('open-manage-categories-btn').addEventListener('click', function () {
+            const modal = new bootstrap.Modal(document.getElementById('manageCategoriesModal'));
+            modal.show();
+        });
+
+        // Ajout d'une catégorie via le modal
+        document.getElementById('add-category-modal-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const name = document.getElementById('modal-category-name').value;
+            const formData = new FormData();
+            formData.append('category_name', name);
+            const response = await fetch('/add_category', {
+                method: 'POST',
+                body: formData
+            });
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                window.location.reload();
+            }
+        });
+
+        // Renommer une catégorie
+        document.querySelectorAll('.rename-category-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const li = btn.closest('li');
+                const span = li.querySelector('.category-label');
+                const oldName = span.textContent;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = oldName;
+                input.className = 'form-control form-control-sm me-2';
+                span.replaceWith(input);
+                input.focus();
+                input.addEventListener('blur', async function () {
+                    const newName = input.value.trim();
+                    if (newName && newName !== oldName) {
+                        const id = li.getAttribute('data-id');
+                        const response = await fetch('/rename_category', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: id, new_name: newName })
+                        });
+                        if (response.ok) window.location.reload();
+                    } else {
+                        input.replaceWith(span);
+                    }
+                });
+            });
+        });
+
+        // Supprimer une catégorie
+        document.querySelectorAll('.delete-category-btn').forEach(btn => {
+            btn.addEventListener('click', async function () {
+                if (!confirm('Supprimer cette catégorie ?')) return;
+                const li = btn.closest('li');
+                const id = li.getAttribute('data-id');
+                const response = await fetch('/delete_category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id })
+                });
+                if (response.ok) window.location.reload();
+            });
+        });
+
+    });
+    function generatePassword(length, includeUppercase, includeNumbers, includeSymbols, excludeCharacters) {
+        const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+        const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const numbers = '0123456789';
+        const symbols = '!@#$%^&*()_+[]{}|;:,.<>?';
+
+        let characters = lowercase;
+        if (includeUppercase) characters += uppercase;
+        if (includeNumbers) characters += numbers;
+        if (includeSymbols) characters += symbols;
+
+        if (excludeCharacters) {
+            const excludeSet = new Set(excludeCharacters);
+            characters = [...characters].filter(char => !excludeSet.has(char)).join('');
+        }
+
+        let password = '';
+        for (let i = 0; i < length; i++) {
+            const randomIndex = Math.floor(Math.random() * characters.length);
+            password += characters[randomIndex];
+        }
+        return password;
+    }
 </script>
-{% endblock %}
+{%endblock%}
 
-{% block styles %}
+{%block styles%}
 <style>
-    table {
-        width: 100%;
-        border-collapse: collapse;
+    .password-panel {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1050;
+        min-width: 320px;
+        max-width: 95vw;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
 
-    th,
-    td {
-        border: 1px solid black;
-        padding: 0.5rem;
-    }
-
-    tbody {
+    .password-panel.active {
         display: block;
-        max-height: 200px;
-        /* Adjust height as needed */
-        overflow-y: auto;
     }
 
-    thead,
-    tbody tr {
-        display: table;
-        width: 100%;
-        table-layout: fixed;
+    .overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1040;
+    }
+
+    .overlay.active {
+        display: block;
+    }
+
+    .input-group .form-control {
+        min-width: 0;
     }
 </style>
-{% endblock %}
+{%endblock%}

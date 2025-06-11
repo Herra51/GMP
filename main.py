@@ -33,11 +33,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route('/')
-@login_required
-def home():
-    return render_template('index.html', username=session['user_id'])
-
 @app.route('/generate_password')
 def generate_password():
     key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
@@ -100,9 +95,9 @@ def login():
     return render_template('auth/login.html')
 
 # Route to get all passwords
-@app.route('/password_list')
+@app.route('/')
 @login_required
-def password_list():
+def index():
     user_id = session['user_id']
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -124,13 +119,13 @@ def password_list():
             except Exception as e:
                 password['password'] = f"Error decrypting password: {str(e)}"
         categories = get_categories()
-        return render_template('password_list.html', passwords=passwords, categories=categories)
+        return render_template('index.html', passwords=passwords, categories=categories, username=session['user_id'])
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
-        return render_template('password_list.html', passwords=[], categories=[], error="Erreur MySQL lors de la récupération des mots de passe.")
+        return render_template('index.html', passwords=[], categories=[], error="Erreur MySQL lors de la récupération des mots de passe.", username=session['user_id'])
     except Exception as e:
         print(e)
-        return render_template('password_list.html', passwords=[], categories=[], error="Erreur inattendue lors de la récupération des mots de passe.")
+        return render_template('index.html', passwords=[], categories=[], error="Erreur inattendue lors de la récupération des mots de passe.", username=session['user_id'])
     finally:
         conn.close()
 
