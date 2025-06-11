@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Environments
+.env
+.venv/
+env/
+venv/
+ENV/
+*.env
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database
+*.sqlite3
+*.db
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Secrets
+secrets.json
+
+# KeePass files
+*.kdbx
