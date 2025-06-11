@@ -381,6 +381,20 @@
             });
         });
     });
+    // Fonction pour formater la date
+    function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleString('fr-FR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+    
     // Filter passwords by category
     const categoryFilter = document.getElementById('category-filter');
     categoryFilter.addEventListener('change', async () => {
@@ -409,7 +423,7 @@
                         <button type="button" class="btn btn-outline-primary copy-password" data-password="${password.password}">Copier</button>
                     </div>
                 </td>
-                <td>${password.created_at}</td>
+                <td>${formatDate(password.created_at)}</td>
                 <td>
                     <button class="btn btn-outline-success btn-sm share-btn" data-id="${password.id_password}">Partager</button>
                     <button class="btn btn-outline-warning btn-sm edit-btn" data-id="${password.id_password}">Modifier</button>
