@@ -837,7 +837,7 @@ def disable_2fa():
         cursor.execute("SELECT otp_secret FROM user WHERE id_user = %s", (user_id,))
         user = cursor.fetchone()
         cursor.execute("SELECT default_share_views, default_share_expiry_minutes FROM user WHERE id_user=%s", (user_id,))
-        share_settings = cursor.fetchone() or {'default_share_views': 1, 'default_share_expiry_minutes': 120}
+        share_settings = cursor.fetchone()
         conn.close()
         return render_template(
             'parametres.html',
