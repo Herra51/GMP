@@ -69,12 +69,15 @@ def register():
         username = request.form['username']
         email = request.form['email']
         password = request.form['password']
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-        # Génère un sel unique pour le chiffrement (non secret)
-        encryption_salt = secrets.token_bytes(16)
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
+            # Vérifie si username ou email existe déjà
+            cursor.execute("SELECT 1 FROM user WHERE username = %s OR email = %s", (username, email))
+            if cursor.fetchone():
+                return render_template('auth/register.html', message="Nom d'utilisateur ou email déjà utilisé.")
+            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            encryption_salt = secrets.token_bytes(16)
             cursor.execute(
                 "INSERT INTO user (username, email, password, encryption_salt) VALUES (%s, %s, %s, %s)",
                 (username, email, hashed_password, encryption_salt)
@@ -82,8 +85,10 @@ def register():
             conn.commit()
         except pymysql.Error as e:
             print(f"An error occurred Mysql: {e}")
+            return render_template('auth/register.html', message="Erreur MySQL lors de l'inscription.")
         except Exception as e:
             print(e)
+            return render_template('auth/register.html', message="Erreur inattendue lors de l'inscription.")
         finally:
             conn.close()
         return redirect(url_for('login'))
