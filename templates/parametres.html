@@ -1,24 +1,31 @@
-<!-- filepath: c:\Users\canti\Documents\Python\GMP\templates\parametres.html -->
 {% extends 'base.html' %}
 
 {% block content %}
 <div class="container">
     <h1>Paramètres</h1>
-    
+
     <!-- Section pour gérer le profil -->
     <section id="profil">
         <h2>Gérer le Profil</h2>
-        
+
+        <form method="POST" action="/change_password" class="mb-3">
+            <div class="mb-2">
+                <label for="current_password" class="form-label">Mot de passe actuel</label>
+                <input type="password" class="form-control" id="current_password" name="current_password" required>
+            </div>
+            <div class="mb-2">
+                <label for="new_password" class="form-label">Nouveau mot de passe</label>
+                <input type="password" class="form-control" id="new_password" name="new_password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
+            {% if message %}
+            <div class="mt-2 alert alert-info">{{ message }}</div>
+            {% endif %}
+        </form>
     </section>
 
     <!-- Section pour gérer les catégories -->
     <section id="categories">
-        <h2>Gérer les Catégories</h2>
-        <form method="POST" action="/add_category">
-            <label for="category_name">Nom de la catégorie:</label>
-            <input type="text" id="category_name" name="category_name" required>
-            <button type="submit">Ajouter</button>
-        </form>
         <h3>Catégories existantes</h3>
         <table class="table">
             <thead>

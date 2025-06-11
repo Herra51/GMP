@@ -4,48 +4,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-4Q6Gf2aSP4eDXB8Miphtr37CMZZQ5oXLH2yaXMJ2w8e2ZtHTl7GptT4jmndRuHDT" crossorigin="anonymous">
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-j1CDi7MgGQ12Z7Qab0qlWQ/Qqz24Gc6BM0thvEMVjHnfYGF0rmFCozFSxQBxwHKO"
+        crossorigin="anonymous"></script>
+
     <title>{%block title%}{%endblock%}</title>
 </head>
 
 <body>
     <header>
-        <ul>
-            <li><a href="/">Accueil</a></li>
-            <li><a href="/password_list">Mon coffre fort</a></li>
-            <li><a href="/parametres">Paramètres</a></li>
-            <li><a href="/logout">Déconnexion</a></li>
-        </ul>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="/">Coffre Fort</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/">Accueil</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/password_list">Mon coffre fort</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/parametres">Paramètres</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/logout">Déconnexion</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
     </header>
-    {% block content %}{% endblock %}
+    <main class="container my-4">
+        {% block content %}{% endblock %}
+    </main>
     {% block scripts %}{% endblock %}
     {% block styles %}{% endblock %}
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
-
-        header {
-            background-color: #333;
-            color: white;
-            padding: .25rem;
-        }
-
-        header ul {
-            display: flex;
-            justify-content: space-around;
-            list-style: none;
-            padding: 0;
-        }
-
-        header ul li a {
-            color: white;
-            text-decoration: none;
-        }
-
-        header ul li a:hover {
-            text-decoration: underline;
-        }
-    </style>
 </body>
 
 </html>

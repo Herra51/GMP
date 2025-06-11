@@ -120,7 +120,6 @@ def password_list():
         password_generator = PasswordGenerator(key)
         for password in passwords:
             try:
-                # Directly decrypt the base64-encoded password
                 password['password'] = password_generator.decrypt(password['password']).decode('utf-8')
             except Exception as e:
                 password['password'] = f"Error decrypting password: {str(e)}"
@@ -128,15 +127,45 @@ def password_list():
         return render_template('password_list.html', passwords=passwords, categories=categories)
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
+        return render_template('password_list.html', passwords=[], categories=[], error="Erreur MySQL lors de la récupération des mots de passe.")
     except Exception as e:
         print(e)
+        return render_template('password_list.html', passwords=[], categories=[], error="Erreur inattendue lors de la récupération des mots de passe.")
     finally:
         conn.close()
+
+@app.route('/change_password', methods=['POST'])
+@login_required
+def change_password():
+    user_id = session['user_id']
+    current_password = request.form['current_password']
+    new_password = request.form['new_password']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT password FROM user WHERE id_user = %s", (user_id,))
+        user = cursor.fetchone()
+        if not user or not bcrypt.checkpw(current_password.encode('utf-8'), user['password'].encode('utf-8')):
+            message = "Mot de passe actuel incorrect."
+        else:
+            hashed_new = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+            cursor.execute("UPDATE user SET password = %s WHERE id_user = %s", (hashed_new, user_id))
+            conn.commit()
+            message = "Mot de passe modifié avec succès."
+    except Exception as e:
+        print(e)
+        message = "Erreur lors du changement de mot de passe."
+    finally:
+        conn.close()
+    # Recharge la page paramètres avec le message
+    return redirect(url_for('settings', message=message))
 
 @app.route('/parametres')
 @login_required
 def settings():
     user_id = session['user_id']
+    message = request.args.get('message')
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -149,7 +178,7 @@ def settings():
             """, (user_id,)
         )
         categories = cursor.fetchall()
-        return render_template('parametres.html', categories=categories)
+        return render_template('parametres.html', categories=categories, message=message)
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
         return render_template('parametres.html', error="Erreur lors de la récupération des catégories.")
@@ -178,14 +207,15 @@ def add_category():
                 (category_name, user_id)
             )
             conn.commit()
+            return jsonify({"success": True})
         except pymysql.Error as e:
             print(f"An error occurred Mysql: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
         except Exception as e:
             print(e)
+            return jsonify({"success": False, "error": str(e)}), 500
         finally:
             conn.close()
-
-        return redirect(url_for('settings'))
 
 @app.route('/add_password', methods=['POST'])
 @login_required
@@ -231,8 +261,6 @@ def edit_password():
     data = request.get_json()
     idPassword = data.get('id')
     newPassword = data.get('password')
-    newLogin = data.get('login')  # Nouveau champ
-    newUrl = data.get('url')  # Nouveau champ
     user_id = session['user_id']
 
     conn = get_db_connection()
@@ -256,9 +284,9 @@ def edit_password():
         cursor.execute(
             """
             UPDATE password
-            SET password = %s, login = %s, url = %s
+            SET password = %s
             WHERE user_id = %s AND id_password = %s
-            """, (encrypted, newLogin, newUrl, user_id, idPassword)
+            """, (encrypted, user_id, idPassword)
         )
         conn.commit()
         return jsonify({"success": True, "message": "Password updated successfully"}), 200
@@ -433,6 +461,54 @@ def generate_kdbx_route():
     
     
     return generate_kdbx(user_id,get_db_connection(), password)
+
+
+@app.route('/rename_category', methods=['POST'])
+@login_required
+def rename_category():
+    data = request.get_json()
+    cat_id = data.get('id')
+    new_name = data.get('new_name')
+    user_id = session['user_id']
+    if not cat_id or not new_name:
+        return jsonify({'success': False, 'error': 'Données manquantes'}), 400
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE password_category SET category_name = %s WHERE id_password_category = %s AND user_id = %s",
+            (new_name, cat_id, user_id)
+        )
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(e)
+        return jsonify({'success': False, 'error': 'Erreur lors du renommage'}), 500
+    finally:
+        conn.close()
+
+@app.route('/delete_category', methods=['POST'])
+@login_required
+def delete_category():
+    data = request.get_json()
+    cat_id = data.get('id')
+    user_id = session['user_id']
+    if not cat_id:
+        return jsonify({'success': False, 'error': 'ID manquant'}), 400
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM password_category WHERE id_password_category = %s AND user_id = %s",
+            (cat_id, user_id)
+        )
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(e)
+        return jsonify({'success': False, 'error': 'Erreur lors de la suppression'}), 500
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':
