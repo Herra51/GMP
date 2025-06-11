@@ -1,12 +1,8 @@
 -- format : delimiter //
-delimiter //
+delimiter / /
 
 CREATE OR REPLACE PROCEDURE historiser_table()
 BEGIN
-    -- Supprimer les triggers s'ils existent déjà
-    DROP TRIGGER IF EXISTS password_after_insert;
-    DROP TRIGGER IF EXISTS password_after_update;
-    DROP TRIGGER IF EXISTS password_after_delete;
     
     DECLARE trigger_insert VARCHAR(2000);
     DECLARE trigger_update VARCHAR(2000);
@@ -80,6 +76,8 @@ END //
 delimiter ;
 */
 END
-// delimiter;
+/
+/
+delimiter;
 
 CALL historiser_table ();
