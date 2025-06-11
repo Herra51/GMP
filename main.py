@@ -731,12 +731,35 @@ def enable_2fa():
     cursor = conn.cursor()
     qrcode_data = None
     otp_secret = None
-    message = None
+    twofa_message = None
 
     if request.method == 'POST':
-        # ... ton code existant ...
-        pass  # (garde le reste de ton code ici)
+        # Si on a déjà un secret temporaire en session, on le reprend, sinon on en génère un
+        otp_secret = session.get('otp_secret_tmp')
+        if not otp_secret:
+            otp_secret = pyotp.random_base32()
+            session['otp_secret_tmp'] = otp_secret
+
+        otp_code = request.form.get('otp_code')
+        if otp_code:
+            totp = pyotp.TOTP(otp_secret)
+            if totp.verify(otp_code):
+                # Enregistrer le secret dans la base
+                cursor.execute("UPDATE user SET otp_secret = %s WHERE id_user = %s", (otp_secret, user_id))
+                conn.commit()
+                session.pop('otp_secret_tmp', None)
+                conn.close()
+                return redirect(url_for('settings', message="Double authentification activée avec succès."))
+            else:
+                twofa_message = "Code 2FA invalide"
+        # Générer le QR code pour affichage
+        uri = pyotp.totp.TOTP(otp_secret).provisioning_uri(name=f"user{user_id}", issuer_name="GMP")
+        qr = qrcode.make(uri)
+        buf = io.BytesIO()
+        qr.save(buf, format='PNG')
+        qrcode_data = base64.b64encode(buf.getvalue()).decode('utf-8')
     else:
+        # GET : reset le secret temporaire
         session.pop('otp_secret_tmp', None)
 
     # Récupère les catégories et l'état 2FA pour affichage
@@ -760,7 +783,7 @@ def enable_2fa():
         user=user,
         qrcode_data=qrcode_data,
         otp_secret=otp_secret,
-        message=message,
+        twofa_message=twofa_message,
         share_settings={
             'views_left': share_settings['default_share_views'],
             'expiry_minutes': share_settings['default_share_expiry_minutes']
@@ -779,6 +802,9 @@ def disable_2fa():
         cursor = conn.cursor()
         cursor.execute("SELECT otp_secret FROM user WHERE id_user = %s", (user_id,))
         user = cursor.fetchone()
+        # Ajout récupération des paramètres de partage
+        cursor.execute("SELECT default_share_views, default_share_expiry_minutes FROM user WHERE id_user=%s", (user_id,))
+        share_settings = cursor.fetchone() or {'default_share_views': 1, 'default_share_expiry_minutes': 120}
         if user and user['otp_secret']:
             totp = pyotp.TOTP(user['otp_secret'])
             if totp.verify(otp_code):
@@ -798,7 +824,11 @@ def disable_2fa():
             categories=get_categories(),
             user=user,
             show_disable_2fa_form=True,
-            message=message
+            message=message,
+            share_settings={
+                'views_left': share_settings['default_share_views'],
+                'expiry_minutes': share_settings['default_share_expiry_minutes']
+            }
         )
     else:
         # Affiche le formulaire pour entrer le code 2FA
@@ -806,13 +836,19 @@ def disable_2fa():
         cursor = conn.cursor()
         cursor.execute("SELECT otp_secret FROM user WHERE id_user = %s", (user_id,))
         user = cursor.fetchone()
+        cursor.execute("SELECT default_share_views, default_share_expiry_minutes FROM user WHERE id_user=%s", (user_id,))
+        share_settings = cursor.fetchone() or {'default_share_views': 1, 'default_share_expiry_minutes': 120}
         conn.close()
         return render_template(
             'parametres.html',
             categories=get_categories(),
             user=user,
             show_disable_2fa_form=True,
-            message=message
+            message=message,
+            share_settings={
+                'views_left': share_settings['default_share_views'],
+                'expiry_minutes': share_settings['default_share_expiry_minutes']
+            }
         )
 
 if __name__ == '__main__':
