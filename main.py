@@ -103,7 +103,7 @@ def index():
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """SELECT password.id_password, password.platform_name, password.password, password.login, password.url, password.created_at, IFNULL(category_name,'Aucune') as category_name
+            """SELECT password.id_password, password.platform_name, password.password, password.login, password.url, password.created_at, IFNULL(category_name,'Aucune') as category_name, password_category.id_password_category
             FROM password 
             LEFT JOIN password_category ON password.category_id = password_category.id_password_category
             WHERE password.user_id = (SELECT id_user FROM user WHERE id_user = %s)
@@ -255,8 +255,14 @@ def add_password():
 def edit_password():
     data = request.get_json()
     idPassword = data.get('id')
-    newPassword = data.get('password')
     user_id = session['user_id']
+
+    # Champs à modifier
+    newPassword = data.get('password')
+    category_id = data.get('category_id')
+    platform_name = data.get('platform_name')
+    login = data.get('login')
+    url = data.get('url')
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -270,21 +276,45 @@ def edit_password():
         user = cursor.fetchone()
         if not user:
             return jsonify({"success": False, "message": "User not found"}), 404
-        
-        password = newPassword.encode('utf-8')
-        key = os.getenv('ENCRYPTION_KEY')
-        password_generator = PasswordGenerator(key)
-        encrypted = password_generator.encrypt(password).decode('utf-8')
+
+        # Construction dynamique de la requête UPDATE
+        update_fields = []
+        update_values = []
+
+        if category_id is not None:
+            update_fields.append("category_id = %s")
+            update_values.append(category_id)
+        if platform_name is not None:
+            update_fields.append("platform_name = %s")
+            update_values.append(platform_name)
+        if login is not None:
+            update_fields.append("login = %s")
+            update_values.append(login)
+        if url is not None:
+            update_fields.append("url = %s")
+            update_values.append(url)
+        if newPassword:
+            key = os.getenv('ENCRYPTION_KEY')
+            password_generator = PasswordGenerator(key)
+            encrypted = password_generator.encrypt(newPassword.encode('utf-8')).decode('utf-8')
+            update_fields.append("password = %s")
+            update_values.append(encrypted)
+
+        if not update_fields:
+            return jsonify({"success": False, "message": "Aucune donnée à modifier"}), 400
+
+        update_values.extend([user_id, idPassword])
 
         cursor.execute(
-            """
+            f"""
             UPDATE password
-            SET password = %s
+            SET {', '.join(update_fields)}
             WHERE user_id = %s AND id_password = %s
-            """, (encrypted, user_id, idPassword)
+            """,
+            tuple(update_values)
         )
         conn.commit()
-        return jsonify({"success": True, "message": "Password updated successfully"}), 200
+        return jsonify({"success": True, "message": "Password entry updated successfully"}), 200
     except pymysql.Error as e:
         print(f"An error occurred Mysql: {e}")
         return jsonify({"success": False, "message": "Database error"}), 500

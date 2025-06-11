@@ -83,7 +83,7 @@
             <tbody>
                 {% for password in passwords %}
                 <tr>
-                    <td>{{ password.category_name }}</td>
+                    <td data-category-id="{{ password.id_password_category }}">{{ password.category_name }}</td>
                     <td>{{ password.platform_name }}</td>
                     <td>{{ password.login }}</td>
                     <td>
@@ -138,15 +138,37 @@
         <div class="modal-dialog">
             <form id="edit-password-form" class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="editModalLabel">Modifier le mot de passe</h5>
+                    <h5 class="modal-title" id="editModalLabel">Modifier l'entrée</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="edit-password-id">
                     <div class="mb-3">
-                        <label for="edit-password-value" class="form-label">Nouveau mot de passe</label>
+                        <label for="edit-category-id" class="form-label">Catégorie</label>
+                        <select id="edit-category-id" class="form-select" required>
+                            <option value="0">Aucune</option>
+                            {% for categorie in categories %}
+                            <option value="{{ categorie.id_password_category }}">{{ categorie.category_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-platform-name" class="form-label">Plateforme</label>
+                        <input type="text" class="form-control" id="edit-platform-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-login" class="form-label">Identifiant</label>
+                        <input type="text" class="form-control" id="edit-login" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-url" class="form-label">URL</label>
+                        <input type="text" class="form-control" id="edit-url">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-password-value" class="form-label">Nouveau mot de passe (laisser vide pour ne
+                            pas changer)</label>
                         <div class="input-group">
-                            <input type="text" class="form-control" id="edit-password-value" required>
+                            <input type="text" class="form-control" id="edit-password-value">
                             <button type="button" class="btn btn-outline-secondary" id="edit-generate-btn"
                                 title="Générer">
                                 Générer
@@ -570,12 +592,22 @@
             });
         });
 
-        // Edit button
+        // Remplir le modal d'édition avec les infos de la ligne
         document.querySelectorAll('.edit-btn').forEach(button => {
-            button.addEventListener('click', () => {
+            button.addEventListener('click', function () {
                 const id = button.getAttribute('data-id');
+                // Récupérer la ligne du tableau correspondante
+                const row = button.closest('tr');
                 document.getElementById('edit-password-id').value = id;
-                document.getElementById('edit-password-value').value = '';
+
+                const catId = row.children[0].getAttribute('data-category-id'); // 0 si catégorie est la 1ère colonne
+                document.getElementById('edit-category-id').value = catId !== "None" ? String(catId) : "0";
+
+                document.getElementById('edit-platform-name').value = row.children[1].textContent.trim();
+                document.getElementById('edit-login').value = row.children[2].textContent.trim();
+                document.getElementById('edit-url').value = row.children[3].textContent.trim();
+                document.getElementById('edit-password-value').value = ""; // Vide par défaut
+
                 const editModal = new bootstrap.Modal(document.getElementById('editModal'));
                 editModal.show();
             });
@@ -593,15 +625,31 @@
             document.getElementById('edit-password-value').value = generatedPassword;
         });
 
+        // Soumission du formulaire d'édition
         document.getElementById('edit-password-form').addEventListener('submit', async function (e) {
             e.preventDefault();
             const id = document.getElementById('edit-password-id').value;
+            const category_id = document.getElementById('edit-category-id').value;
+            const platform_name = document.getElementById('edit-platform-name').value;
+            const login = document.getElementById('edit-login').value;
+            const url = document.getElementById('edit-url').value;
             const newPassword = document.getElementById('edit-password-value').value;
+
+            const payload = {
+                id: id,
+                category_id: category_id,
+                platform_name: platform_name,
+                login: login,
+                url: url
+            };
+            if (newPassword) {
+                payload.password = newPassword;
+            }
 
             const response = await fetch('/edit', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id, password: newPassword })
+                body: JSON.stringify(payload)
             });
             const data = await response.json();
             const editModal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
