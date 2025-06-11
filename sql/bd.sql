@@ -5,6 +5,7 @@ CREATE TABLE user (
     password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     encryption_salt VARBINARY(32) NOT NULL,
+    otp_secret VARBINARY(32),
     PRIMARY KEY (id_user),
     UNIQUE (username),
     UNIQUE (email)
