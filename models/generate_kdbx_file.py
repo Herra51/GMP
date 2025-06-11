@@ -1,7 +1,8 @@
 from collections import defaultdict
 from flask import request, jsonify
 from pykeepass import create_database, PyKeePass
-from password_generator import PasswordGenerator
+from .password_generator import PasswordGenerator
+
 def generate_kdbx(user_id,bdd_connection,master_password):
     try:
         # Récupérer l'ID utilisateur depuis les données POST
