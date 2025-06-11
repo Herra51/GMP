@@ -55,7 +55,7 @@ def generate_password():
         return render_template('index.html', passwords=[], categories=[], error="Erreur inattendue lors de la récupération des mots de passe.", username=session['user_id'])
     finally:
         conn.close()
-    key = os.getenv('ENCRYPTION_KEY').encode('utf-8')
+    key = get_encryption_key().encode('utf-8')
     password_generator = PasswordGenerator(key)
     multiprocessing.freeze_support()
     with multiprocessing.Pool() as pool:
@@ -456,7 +456,7 @@ def edit_password():
             update_fields.append("url = %s")
             update_values.append(url)
         if newPassword:
-            key = os.getenv('ENCRYPTION_KEY')
+            key = get_encryption_key()  # <-- Utilise la clé dérivée de la session
             password_generator = PasswordGenerator(key)
             encrypted = password_generator.encrypt(newPassword.encode('utf-8')).decode('utf-8')
             update_fields.append("password = %s")
@@ -543,10 +543,16 @@ def share_password():
     if expiry_minutes and expiry_minutes > 0:
         cursor.execute("SELECT NOW() + INTERVAL %s MINUTE as expires_at", (expiry_minutes,))
         expires_at = cursor.fetchone()['expires_at']
+    # Déchiffrer le mot de passe à partager
+    cursor.execute("SELECT password, platform_name FROM password WHERE id_password = %s", (password_id,))
+    pwd_row = cursor.fetchone()
+    key = get_encryption_key()
+    password_generator = PasswordGenerator(key)
+    shared_plain_password = password_generator.decrypt(pwd_row['password']).decode('utf-8')
     share_token = str(uuid.uuid4())
     cursor.execute(
-        "INSERT INTO shared_password (password_id, share_token, views_left, expires_at) VALUES (%s, %s, %s, %s)",
-        (password_id, share_token, views_left, expires_at)
+        "INSERT INTO shared_password (password_id, share_token, views_left, expires_at, shared_plain_password) VALUES (%s, %s, %s, %s, %s)",
+        (password_id, share_token, views_left, expires_at, shared_plain_password)
     )
     conn.commit()
     conn.close()
@@ -561,7 +567,7 @@ def get_shared_password(share_token):
     try:
         cursor.execute(
             """
-            SELECT p.platform_name, p.password, sp.id_shared_password, sp.views_left, sp.expires_at
+            SELECT p.platform_name, sp.shared_plain_password, sp.id_shared_password, sp.views_left, sp.expires_at
             FROM shared_password sp
             JOIN password p ON sp.password_id = p.id_password
             WHERE sp.share_token = %s
@@ -583,15 +589,8 @@ def get_shared_password(share_token):
             cursor.execute("DELETE FROM shared_password WHERE id_shared_password = %s", (shared_password['id_shared_password'],))
             conn.commit()
             return render_template('show_password.html', error="Lien expiré ou nombre de vues dépassé.")
-        # Décrypte le mot de passe
-        key = get_encryption_key() if 'encryption_key' in session else None
-        if not key:
-            return render_template('show_password.html', error="Session expirée, veuillez vous reconnecter.")
-        password_generator = PasswordGenerator(key)
-        try:
-            decrypted_password = password_generator.decrypt(shared_password['password']).decode('utf-8')
-        except Exception as e:
-            decrypted_password = f"Erreur lors du déchiffrement : {str(e)}"
+        # Pas besoin de clé de session, on affiche le mot de passe partagé
+        decrypted_password = shared_password['shared_plain_password']
         # Décrémente views_left si pas illimité
         if shared_password['views_left'] > 0:
             cursor.execute(

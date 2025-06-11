@@ -64,6 +64,7 @@ CREATE TABLE shared_password (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     views_left INT DEFAULT 1,
     expires_at DATETIME DEFAULT NULL,
+    shared_plain_password VARCHAR(255) DEFAULT NULL,
     PRIMARY KEY (id_shared_password),
     FOREIGN KEY (password_id) REFERENCES password (id_password) ON DELETE CASCADE
 );
@@ -76,4 +77,15 @@ CREATE TABLE shared_category (
     views_left INT DEFAULT 1,
     expires_at DATETIME DEFAULT NULL,
     FOREIGN KEY (category_id) REFERENCES password_category (id_password_category) ON DELETE CASCADE
+);
+
+CREATE TABLE shared_category_password (
+    id_shared_category_password INT auto_increment PRIMARY KEY,
+    shared_category_id INT NOT NULL,
+    platform_name VARCHAR(50) NOT NULL,
+    login VARCHAR(50) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    url VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (shared_category_id) REFERENCES shared_category (id_shared_category) ON DELETE CASCADE
 );
