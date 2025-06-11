@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,14 +14,16 @@
             align-items: center;
             justify-content: center;
         }
+
         .login-container {
             background: #fff;
             padding: 2.5rem 2rem;
             border-radius: 1rem;
-            box-shadow: 0 0 24px 0 rgba(0,0,0,0.07);
+            box-shadow: 0 0 24px 0 rgba(0, 0, 0, 0.07);
             width: 100%;
             max-width: 370px;
         }
+
         .logo {
             font-weight: bold;
             font-size: 2rem;
@@ -30,18 +33,28 @@
         }
     </style>
 </head>
+
 <body>
     <div class="login-container">
         <div class="logo">🔒 GMP</div>
         <form action="/login" method="post">
             <div class="mb-3">
                 <label for="username" class="form-label">Nom d'utilisateur</label>
-                <input type="text" class="form-control" id="username" name="username" required autofocus>
+                <input type="text" class="form-control" id="username" name="username" required autofocus
+                    value="{{ username or '' }}">
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label">Mot de passe</label>
-                <input type="password" class="form-control" id="password" name="password" required>
+                <input type="password" class="form-control" id="password" name="password" required
+                    value="{{ password or '' }}">
             </div>
+            {% if show_otp_input %}
+            <div class="mb-3">
+                <label for="otp_code" class="form-label">Code 2FA</label>
+                <input type="text" class="form-control" id="otp_code" name="otp_code" maxlength="6" pattern="\d{6}"
+                    required autofocus>
+            </div>
+            {% endif %}
             {% if message %}
             <div class="alert alert-danger py-1" role="alert" style="font-size:0.95em;">
                 {{ message }}
@@ -55,4 +68,5 @@
         </form>
     </div>
 </body>
+
 </html>

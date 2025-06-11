@@ -126,14 +126,15 @@ def login():
                 otp_secret = user.get('otp_secret')
                 # Si l'utilisateur a activé la 2FA
                 if otp_secret:
-                    # Si le code OTP n'est pas encore soumis, affiche le formulaire OTP
+                    # Affiche le formulaire OTP directement sur la page login
                     if not otp_code:
-                        return render_template('auth/otp.html', username=username, password=password)
+                        return render_template('auth/login.html', username=username, password=password, show_otp_input=True)
                     # Vérifie le code OTP
                     if not pyotp.TOTP(otp_secret).verify(otp_code):
-                        return render_template('auth/otp.html', username=username, password=password, message='Code 2FA invalide')
+                        return render_template('auth/login.html', username=username, password=password, show_otp_input=True, message='Code 2FA invalide')
                 # Authentification réussie
                 session['user_id'] = user['id_user']
+
                 # Dérive la clé à partir du mot de passe de connexion et du sel stocké
                 salt = user['encryption_salt']
                 if isinstance(salt, str):
